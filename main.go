@@ -3,15 +3,11 @@ package main
 import (
 	"os"
 
-	webrtc "github.com/PeterXu/xrtc"
 	"github.com/PeterXu/xrtc/exit"
+	"github.com/PeterXu/xrtc/webrtc"
 )
 
 func main() {
-	TestServer()
-}
-
-func TestServer() {
 	hub := webrtc.Inst()
 
 	exit.Listen(func(s os.Signal) {

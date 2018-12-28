@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/PeterXu/xrtc"
 	"github.com/PeterXu/xrtc/exit"
+	"github.com/PeterXu/xrtc/webrtc"
 )
 
 func main() {

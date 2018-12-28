@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
+	//"net/url"
 	"regexp"
 	"strings"
 	"time"
 
+	log "github.com/PeterXu/xrtc/logging"
 	"github.com/PeterXu/xrtc/yaml"
-	log "github.com/Sirupsen/logrus"
 )
 
 type Config struct {
@@ -62,14 +62,14 @@ func IsYamlString(node yaml.Node) string {
 	if s, err := IsYamlScalar(node); err != nil {
 		return ""
 	} else {
-		return s.String()
+		return strings.TrimSpace(s.String())
 	}
 }
 
 func (c *Config) Load(fname string) bool {
 	ycfg, err := yaml.ReadFile(fname)
 	if err != nil {
-		log.Fatalf("[config] read yaml failed, err=", err)
+		log.Fatal("[config] read failed, err=", err)
 		return false
 	}
 
@@ -77,11 +77,11 @@ func (c *Config) Load(fname string) bool {
 
 	// check root and services
 	if root, err := IsYamlMap(ycfg.Root); err != nil {
-		log.Fatalf("[config] check root, err=", err)
+		log.Fatal("[config] check root, err=", err)
 		return false
 	} else {
 		if services, err = IsYamlMap(root.Key("services")); err != nil {
-			log.Fatalf("[config] check services, err=", err)
+			log.Fatal("[config] check services, err=", err)
 			return false
 		}
 	}
@@ -90,46 +90,49 @@ func (c *Config) Load(fname string) bool {
 	for _, key := range YamlKeys(services) {
 		server, err := IsYamlMap(services.Key(key))
 		if err != nil {
-			log.Warnf("[config] check server [", key, "], err=", err)
+			log.Warn("[config] check server [", key, "], err=", err)
 			continue
 		}
 
 		var proto yaml.Scalar
 		if proto, err = IsYamlScalar(server.Key("proto")); err != nil {
-			log.Warnf("[config] check server proto, err=", err)
+			log.Warn("[config] check server proto, err=", err)
 			continue
 		}
 
-		var port yaml.Scalar
-		if port, err = IsYamlScalar(server.Key("port")); err != nil {
-			log.Warnf("[config] check server port, err=", err)
+		var netp yaml.Map
+		if netp, err = IsYamlMap(server.Key("net")); err != nil {
+			log.Warn("[config] check server net, err=", err)
 			continue
 		}
 
-		log.Printf("[config] parse server[%s]: [%s://%s]", key, proto, port)
+		log.Printf("[config] parse server [%s]: proto[%s]", key, proto)
 		switch proto.String() {
 		case "udp":
-			c.UdpServers[key] = &UDPConfig{Name: key, Port: port.String()}
+			udpsvr := NewUDPConfig(key)
+			udpsvr.Net.Load(netp)
+			c.UdpServers[key] = udpsvr
 		case "tcp":
-			tcpsvr := &TCPConfig{Name: key, Port: port.String()}
-			if config, err := IsYamlMap(server.Key("config")); err == nil {
-				c.loadTcpConfig(config, tcpsvr)
-			}
-			if routes, err := IsYamlList(server.Key("routes")); err == nil {
-				tcpsvr.Routes = c.loadHttpRoutes(routes)
+			tcpsvr := NewTCPConfig(key)
+			tcpsvr.Net.Load(netp)
+			enableHttp := IsYamlString(server.Key("enable_http"))
+			log.Println("[config] check tcp's enable_http=", enableHttp)
+			tcpsvr.EnableHttp = (enableHttp == "true")
+			if tcpsvr.EnableHttp {
+				if httpp, err := IsYamlMap(server.Key("http")); err == nil {
+					tcpsvr.Http.Load(httpp)
+				}
 			}
 			c.TcpServers[key] = tcpsvr
 		case "http":
-			httpsvr := &HTTPConfig{Name: key, Port: port.String()}
-			if config, err := IsYamlMap(server.Key("config")); err == nil {
-				c.loadHttpConfig(config, httpsvr)
-			}
-			if routes, err := IsYamlList(server.Key("routes")); err == nil {
-				httpsvr.Routes = c.loadHttpRoutes(routes)
+			httpsvr := NewHTTPConfig(key)
+			httpsvr.Net.Load(netp)
+			if httpp, err := IsYamlMap(server.Key("http")); err == nil {
+				httpsvr.Http.Load(httpp)
 			}
 			c.HttpServers[key] = httpsvr
 		default:
-			log.Warnf("[config] unsupported proto=", proto)
+			log.Warn("[config] unsupported proto=", proto)
 		}
 		fmt.Println()
 	}
@@ -137,76 +140,87 @@ func (c *Config) Load(fname string) bool {
 	return true
 }
 
-func (c *Config) loadTcpConfig(node yaml.Map, svr *TCPConfig) {
-	svr.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
-	svr.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
-	log.Println("[config] tcp tsl crt/key:", svr.TlsCrtFile, svr.TlsKeyFile)
-}
-
-func (c *Config) loadHttpConfig(node yaml.Map, svr *HTTPConfig) {
-	svr.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
-	svr.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
-	log.Println("[config] http tsl crt/key:", svr.TlsCrtFile, svr.TlsKeyFile)
-}
-
-func (c *Config) loadHttpRoutes(node yaml.List) []StringPair {
-	var routes []StringPair
-	//log.Println("[config] load routes, ", node)
-	for _, r := range node {
-		if item, err := IsYamlMap(r); err == nil {
-			for k, v := range item {
-				log.Println("[config] route=", k, v)
-				log.Println(url.Parse(IsYamlString(v)))
-				routes = append(routes, StringPair{k, IsYamlString(v)})
-			}
-		} else {
-			log.Warnln("[config] invalid route:", r)
-		}
-	}
-	return routes
-}
-
-type TCPConfig struct {
-	Name       string
-	Port       string // "host:port"
+/// Net basic params
+type NetParams struct {
+	Addr       string // "host:port"
 	TlsCrtFile string
 	TlsKeyFile string
-	Routes     []StringPair
+}
+
+func (n *NetParams) Load(node yaml.Map) {
+	n.Addr = IsYamlString(node.Key("addr"))
+	n.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
+	n.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
+	log.Println("[config] net:", n)
+}
+
+/// UDP config
+func NewUDPConfig(name string) *UDPConfig {
+	cfg := &UDPConfig{Name: name}
+	return cfg
 }
 
 type UDPConfig struct {
 	Name string
-	Port string // "host:port"
+	Net  NetParams
 }
 
-var kDefaultHTTPConfig = HTTPConfig{
-	MaxConn:               100,
-	DialTimeout:           time.Second * 3,
-	ResponseHeaderTimeout: time.Second * 3,
-	KeepAliveTimeout:      time.Second * 10,
-	GlobalFlushInterval:   time.Second * 10,
-	FlushInterval:         time.Second * 10,
+/// TCP config
+func NewTCPConfig(name string) *TCPConfig {
+	cfg := &TCPConfig{Name: name}
+	cfg.Http = kDefaultHttpParams
+	cfg.Http.Hijacks = make(map[string]string)
+	return cfg
+}
 
-	RequestID: "X-Request-Id",
-	STSHeader: STSHeader{},
+type TCPConfig struct {
+	Name       string
+	Net        NetParams
+	EnableHttp bool
+	Http       HttpParams
+}
+
+/// HTTP config
+func NewHTTPConfig(name string) *HTTPConfig {
+	cfg := &HTTPConfig{Name: name}
+	cfg.Http = kDefaultHttpParams
+	cfg.Http.Hijacks = make(map[string]string)
+	return cfg
 }
 
 type HTTPConfig struct {
-	Name       string
-	Port       string // "host:port"
-	TlsCrtFile string
-	TlsKeyFile string
-	Routes     []StringPair
+	Name string
+	Net  NetParams
+	Http HttpParams
+}
+
+/// HTTP params
+var kDefaultHttpParams = HttpParams{
+	MaxConns:              100,
+	IdleConnTimeout:       time.Second * 30,
+	DialTimeout:           time.Second * 10,
+	ResponseHeaderTimeout: time.Second * 10,
+	KeepAliveTimeout:      time.Second * 120,
+	GlobalFlushInterval:   time.Millisecond * 10,
+	FlushInterval:         time.Millisecond * 10,
+	RequestID:             "X-Request-Id",
+	STSHeader:             STSHeader{},
+}
+
+type HttpParams struct {
+	Routes  []StringPair
+	Hijacks map[string]string
 
 	NoRouteStatus int
 	NoRouteHTML   string
 
-	MaxConn               int
-	DialTimeout           time.Duration
-	ResponseHeaderTimeout time.Duration
-	KeepAliveTimeout      time.Duration
-	GlobalFlushInterval   time.Duration
-	FlushInterval         time.Duration
+	MaxConns              int           // max idle conns
+	IdleConnTimeout       time.Duration // the maximum amount of time an idle conn (keep-alive) connection
+	DialTimeout           time.Duration // the maximum amount of time a dial completes, system has around 3min
+	ResponseHeaderTimeout time.Duration // response waiting time
+	KeepAliveTimeout      time.Duration // tcp keepalive(default disable)
+	GlobalFlushInterval   time.Duration // reverse proxy:
+	FlushInterval         time.Duration //		the flush interval to the client while copying the response body.
 
 	LocalIP          string
 	ClientIPHeader   string
@@ -223,8 +237,44 @@ type STSHeader struct {
 	Preload    bool
 }
 
+func (h *HttpParams) Load(node yaml.Map) {
+	if routes, err := IsYamlList(node.Key("routes")); err == nil {
+		h.loadHttpRoutes(routes)
+	}
+	if hijacks, err := IsYamlList(node.Key("hijacks")); err == nil {
+		h.loadHttpHijacks(hijacks)
+	}
+}
+func (h *HttpParams) loadHttpRoutes(node yaml.List) {
+	//log.Println("[config] load routes, ", node)
+	for _, r := range node {
+		if item, err := IsYamlMap(r); err == nil {
+			for k, v := range item {
+				log.Println("[config] route=", k, v)
+				//log.Println(url.Parse(IsYamlString(v)))
+				h.Routes = append(h.Routes, StringPair{k, IsYamlString(v)})
+			}
+		} else {
+			log.Warnln("[config] invalid route:", r)
+		}
+	}
+}
+
+func (h *HttpParams) loadHttpHijacks(node yaml.List) {
+	for _, r := range node {
+		if item, err := IsYamlMap(r); err == nil {
+			for k, v := range item {
+				log.Println("[config] hijack=", k, v)
+				h.Hijacks[k] = IsYamlString(v)
+			}
+		} else {
+			log.Warnln("[config] invalid hijack:", r)
+		}
+	}
+}
+
 // addResponseHeaders adds/updates headers in the response
-func addResponseHeaders(w http.ResponseWriter, r *http.Request, cfg HTTPConfig) error {
+func addResponseHeaders(w http.ResponseWriter, r *http.Request, cfg HttpParams) error {
 	if r.TLS != nil && cfg.STSHeader.MaxAge > 0 {
 		sts := "max-age=" + i32toa(int32(cfg.STSHeader.MaxAge))
 		if cfg.STSHeader.Subdomains {
@@ -247,7 +297,7 @@ func addResponseHeaders(w http.ResponseWriter, r *http.Request, cfg HTTPConfig) 
 // * ClientIPHeader != "": Set header with that name to <remote ip>
 // * TLS connection: Set header with name from `cfg.TLSHeader` to `cfg.TLSHeaderValue`
 //
-func addHeaders(r *http.Request, cfg HTTPConfig, stripPath string) error {
+func addHeaders(r *http.Request, cfg HttpParams, stripPath string) error {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return errors.New("cannot parse " + r.RemoteAddr)
@@ -436,10 +486,11 @@ func localPort(r *http.Request) string {
 	return "80"
 }
 
-func newHTTPTransport(tlscfg *tls.Config, cfg HTTPConfig) *http.Transport {
+func newHTTPTransport(tlscfg *tls.Config, cfg HttpParams) *http.Transport {
 	return &http.Transport{
 		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
-		MaxIdleConnsPerHost:   cfg.MaxConn,
+		MaxIdleConnsPerHost:   cfg.MaxConns,
+		IdleConnTimeout:       cfg.IdleConnTimeout,
 		Dial: (&net.Dialer{
 			Timeout:   cfg.DialTimeout,
 			KeepAlive: cfg.KeepAliveTimeout,

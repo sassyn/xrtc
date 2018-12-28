@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 type OneServer interface {
@@ -222,9 +222,7 @@ func (h *MaxHub) AddServer(server OneServer) {
 
 func (h *MaxHub) Exit() {
 	for _, svr := range h.servers {
-		if svr.Exit != nil {
-			svr.Exit()
-		}
+		svr.Exit()
 	}
 	h.exitTick <- true
 }

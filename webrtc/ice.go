@@ -10,7 +10,7 @@ import (
 	"net"
 	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 // These are the types of STUN messages defined in RFC 5389.

@@ -3,7 +3,7 @@ package webrtc
 import (
 	"encoding/json"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 func ParseUmsRequest(data []byte) (*UmsRequestJson, error) {

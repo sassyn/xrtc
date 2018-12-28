@@ -3,7 +3,7 @@ package webrtc
 import (
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 type Cache struct {

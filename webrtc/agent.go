@@ -67,7 +67,7 @@ import (
 	"sync"
 	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 const (

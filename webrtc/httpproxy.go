@@ -19,8 +19,8 @@ import (
 	"time"
 
 	gziph "github.com/PeterXu/xrtc/gzip"
+	log "github.com/PeterXu/xrtc/logging"
 	uuid "github.com/PeterXu/xrtc/uuid"
-	log "github.com/Sirupsen/logrus"
 )
 
 const kHttpHeaderWebrtcCheck string = "x-user-webrtc-check"
@@ -149,16 +149,6 @@ var kDefaultRouteTarget = &RouteTarget{
 	},
 }
 
-var kDefaultRouteTarget2 = &RouteTarget{
-	Service:       "default",
-	TLSSkipVerify: true,
-	URL: &url.URL{
-		Scheme: "https",
-		Host:   "119.254.195.20",
-		Path:   "/",
-	},
-}
-
 type RouteTarget struct {
 	// Service is the name of the service the targetURL points to
 	Service string
@@ -190,7 +180,7 @@ type RouteTarget struct {
 }
 
 type HTTPProxyHandler struct {
-	Config HTTPConfig
+	Config HttpParams
 
 	// Transport is the http connection pool configured with timeouts.
 	// The proxy will panic if this value is nil.
@@ -210,7 +200,7 @@ type HTTPProxyHandler struct {
 	UUID func() string
 }
 
-func NewHTTPProxyHandle(cfg HTTPConfig, lookup func(*http.Request) *RouteTarget) http.Handler {
+func NewHTTPProxyHandle(cfg HttpParams, lookup func(*http.Request) *RouteTarget) http.Handler {
 	return &HTTPProxyHandler{
 		Config:            cfg,
 		Transport:         newHTTPTransport(nil, cfg),

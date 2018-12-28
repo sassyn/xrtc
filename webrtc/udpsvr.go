@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 type UdpServer struct {
@@ -23,7 +23,7 @@ type UdpServer struct {
 
 func NewUdpServer(hub *MaxHub, cfg *UDPConfig) *UdpServer {
 	//addr := fmt.Sprintf(":%d", port)
-	addr := cfg.Port
+	addr := cfg.Net.Addr
 	if udpAddr, err := net.ResolveUDPAddr("udp", addr); err == nil {
 		if conn, err := net.ListenUDP("udp", udpAddr); err == nil {
 			log.Println("[udp_server] listen udp on: ", addr)

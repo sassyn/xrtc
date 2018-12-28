@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 const kDefaultConnectionTimeout = 30 * 1000 // ms

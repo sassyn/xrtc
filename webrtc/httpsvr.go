@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 type HttpServer struct {
@@ -23,7 +23,7 @@ type HttpServer struct {
 // http server (http/https/ws/wss)
 func NewHttpServer(hub *MaxHub, cfg *HTTPConfig) *HttpServer {
 	//addr := fmt.Sprintf(":%d", port)
-	addr := cfg.Port
+	addr := cfg.Net.Addr
 	log.Println("[http] listen on: ", addr)
 
 	l, err := net.Listen("tcp", addr)
@@ -35,7 +35,7 @@ func NewHttpServer(hub *MaxHub, cfg *HTTPConfig) *HttpServer {
 }
 
 func (s *HttpServer) GetSslFile() (string, string) {
-	return s.config.TlsCrtFile, s.config.TlsKeyFile
+	return s.config.Net.TlsCrtFile, s.config.Net.TlsKeyFile
 }
 
 func (s *HttpServer) Run() {
@@ -147,9 +147,9 @@ func (h *HttpHandler) Process() bool {
 }
 
 func (h *HttpHandler) newHTTPProxyHandler() http.Handler {
-	return NewHTTPProxyHandle(kDefaultHTTPConfig, func(r *http.Request) *RouteTarget {
-		if h.svr.config.Routes != nil {
-			for _, item := range h.svr.config.Routes {
+	return NewHTTPProxyHandle(h.svr.config.Http, func(r *http.Request) *RouteTarget {
+		if h.svr.config.Http.Routes != nil {
+			for _, item := range h.svr.config.Http.Routes {
 				uri, err := url.Parse(item.second)
 				if err != nil {
 					continue

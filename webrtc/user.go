@@ -1,7 +1,7 @@
 package webrtc
 
 import (
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 type User struct {

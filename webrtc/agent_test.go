@@ -1,9 +1,10 @@
 package webrtc
 
 import (
-	"log"
 	"testing"
 	"time"
+
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 func TestNewAgent(t *testing.T) {
@@ -85,7 +86,7 @@ func TestIceNegotiation(t *testing.T) {
 				continue
 			case e := <-client.EventChannel:
 				log.Print("client event", e)
-				if e.event == EventNegotiationDone {
+				if e.Event == EventNegotiationDone {
 					log.Print("client negotiation done")
 					client.Send([]byte("hello"))
 				}
@@ -110,7 +111,7 @@ func TestIceNegotiation(t *testing.T) {
 			continue
 		case e := <-server.EventChannel:
 			log.Print("server event", e)
-			if e.event == EventNegotiationDone {
+			if e.Event == EventNegotiationDone {
 				log.Print("server negotiation done")
 			}
 			continue

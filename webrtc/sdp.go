@@ -3,7 +3,7 @@ package webrtc
 import (
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/PeterXu/xrtc/logging"
 )
 
 const kSdpOwner string = "xwebrtc"

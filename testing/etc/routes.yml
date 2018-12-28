@@ -1,38 +1,49 @@
 services:
     httpsvr1:
         proto: http
-        port: :6443
-        config:
+        net:
+            addr: :6443
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
-            maxconn: 4
-            dial_timeout: 1000 #ms
-            response_timeout: 1000 #ms
-            keepalive_timeout: 1000 #ms
-            flush_interval: 1000 #ms
-            global_flush_interval: 1000 #ms
-        routes:
-            - /test:    http://127.0.0.1:8080
-            - /out:     http://127.0.0.1:8080
-            - /:        https://119.254.195.20
-
-    httpsvr2:
-        proto: http
-        port: :6445
-        routes:
-            - /test:    http://127.0.0.1:8080
-            - /out:     http://127.0.0.1:8080
-            - /:        https://119.254.195.20
+        http:
+            max_conns: 4
+            dial_timeout: 10s
+            response_timeout: 10s
+            keepalive_timeout: 120s
+            flush_interval: 10ms
+            global_flush_interval: 10ms
+            hijacks:
+                - /board:  ums
+            routes:
+                - /test:    http://127.0.0.1:8080
+                - /out:     http://127.0.0.1:8080
+                - /:        https://119.254.195.20
 
     tcpsvr1:
         proto: tcp
-        port: :6080
-        config:
+        net:
+            addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
+        enable_http: true
+        http:
+            max_conns: 4
+            dial_timeout: 10s
+            response_timeout: 10s
+            keepalive_timeout: 120s
+            flush_interval: 10ms
+            global_flush_interval: 10ms
+            hijacks:
+                - /board:  ums
+            routes:
+                - /test:    http://127.0.0.1:8080
+                - /out:     http://127.0.0.1:8080
+                - /:        https://119.254.195.20
 
     udpsvr1:
         proto: udp
-        port: :6000
-
+        net:
+            addr: :6000
+            tls_crt_file: /tmp/etc/cert.pem
+            tls_key_file: /tmp/etc/cert.key
 
