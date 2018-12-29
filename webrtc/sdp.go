@@ -211,7 +211,7 @@ func (m *MediaSdp) parseSdp(data []byte) bool {
 		lines = strings.Split(string(data), "\n")
 	}
 
-	log.Println("[sdp] parseSdp, lines=", len(lines))
+	//log.Println("[sdp] parseSdp, lines=", len(lines))
 	for item := range lines {
 		line := []byte(lines[item])
 		if len(line) <= 2 || line[1] != '=' {
@@ -831,7 +831,7 @@ func ReplaceSdpCandidates(data []byte, candidates []string) []byte {
 	}
 
 	var sdp []string
-	log.Println("[sdp] replace candidates, sdp lines=", len(lines))
+	//log.Println("[sdp] replace candidates, sdp lines=", len(lines))
 	for _, line := range lines {
 		if strings.HasPrefix(line, "a=candidate:") {
 			// skip

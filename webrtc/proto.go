@@ -116,11 +116,21 @@ func ParseJanusResponse(data []byte) (*JanusResponseJson, error) {
 	return &jresp, err
 }
 
+func EncodeJanusResponse(resp *JanusResponseJson) []byte {
+	if data, err := json.Marshal(resp); err == nil {
+		return data
+	} else {
+		return nil
+	}
+}
+
 type JanusResponseJson struct {
-	Janus       string     `json:"janus"`
-	SessionId   int        `json:"session_id"`
-	Transaction string     `json:"transaction"`
-	Jsep        *JanusJsep `json:"jsep, omitempty"`
+	Janus       string                 `json:"janus"`
+	SessionId   int                    `json:"session_id"`
+	Transaction string                 `json:"transaction"`
+	Sender      int64                  `json:"sender"`
+	Plugindata  map[string]interface{} `json:"plugindata"`
+	Jsep        *JanusJsep             `json:"jsep, omitempty"`
 }
 
 type JanusBody struct {

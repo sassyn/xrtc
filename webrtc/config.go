@@ -174,16 +174,16 @@ func (n *NetParams) Load(node yaml.Map, proto string) {
 		if ips, err = IsYamlList(node.Key("ips")); err != nil {
 			break
 		}
-		for _, ip := range ips {
+		for idx, ip := range ips {
 			szip := IsYamlString(ip)
 			if len(szip) == 0 {
 				continue
 			}
 			var candidate string
 			if proto == "udp" {
-				candidate = fmt.Sprintf("a=candidate:3159811271 1 udp 2113937151 %s %s typ host", szip, port)
+				candidate = fmt.Sprintf("a=candidate:%d 1 udp 2013266431 %s %s typ host", (idx + 1), szip, port)
 			} else if proto == "tcp" {
-				candidate = fmt.Sprintf("a=candidate:4074051639 1 tcp 1518280447 %s %s typ host tcptype passive", szip, port)
+				candidate = fmt.Sprintf("a=candidate:%d 1 tcp 1010827775 %s %s typ host tcptype passive", (idx + 1), szip, port)
 			} else {
 				continue
 			}
@@ -238,8 +238,8 @@ type HTTPConfig struct {
 var kDefaultHttpParams = HttpParams{
 	MaxConns:              100,
 	IdleConnTimeout:       time.Second * 30,
-	DialTimeout:           time.Second * 10,
-	ResponseHeaderTimeout: time.Second * 10,
+	DialTimeout:           time.Second * 30,
+	ResponseHeaderTimeout: time.Second * 30,
 	KeepAliveTimeout:      time.Second * 120,
 	GlobalFlushInterval:   time.Millisecond * 10,
 	FlushInterval:         time.Millisecond * 10,

@@ -50,7 +50,7 @@ func NewMaxHub() *MaxHub {
 	hub.clients = make(map[string]*User)
 
 	hub.chanRecvFromOuter = make(chan interface{}, 1000) // unblocking mode, data from udpsvr
-	hub.chanAdmin = make(chan interface{})               // blocking mode, data from faibo(admin/control)
+	hub.chanAdmin = make(chan interface{}, 10)           // data from faibo(admin/control)
 	return hub
 }
 
