@@ -23,7 +23,7 @@ import (
 	uuid "github.com/PeterXu/xrtc/uuid"
 )
 
-const kHttpHeaderWebrtcCheck string = "x-user-webrtc-check"
+const kHttpHeaderWebrtcHijack string = "X-Webrtc-Hijack"
 
 func readHTTPBody(httpBody io.ReadCloser) ([]byte, error) {
 	if body, err := ioutil.ReadAll(httpBody); err == nil {
@@ -63,7 +63,7 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 	return body, err
 }
 
-func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration) http.Handler {
+func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
 	return &httputil.ReverseProxy{
 		// this is a simplified director function based on the
 		// httputil.NewSingleHostReverseProxy() which does not
@@ -79,15 +79,30 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration) ht
 				req.Header.Set("User-Agent", "")
 			}
 
+			if req.Method != http.MethodPost || req.ContentLength <= 0 {
+				return
+			}
+
 			// TODO: process request body
-			if req.Method == http.MethodPost && req.ContentLength > 0 {
-				req.Header.Add(kHttpHeaderWebrtcCheck, "1")
-				encoding := req.Header.Get("Content-Encoding")
-				body, err := procHTTPBody(req.Body, encoding)
-				if body == nil || err != nil {
-					fmt.Println("invalid reqeust body, err=", err)
-					return
+			hijack := ""
+			for k, v := range cfg.Hijacks {
+				if strings.HasPrefix(req.URL.Path, k) {
+					hijack = v
+					break
 				}
+			}
+			if len(hijack) == 0 {
+				return
+			}
+
+			req.Header.Add(kHttpHeaderWebrtcHijack, hijack)
+			encoding := req.Header.Get("Content-Encoding")
+			body, err := procHTTPBody(req.Body, encoding)
+			if body == nil || err != nil {
+				fmt.Println("invalid reqeust body, err=", err)
+				return
+			}
+			if hijack == "ums" {
 				if jreq, err := ParseUmsRequest(body); err == nil {
 					offer := []byte(jreq.GetOffer())
 					//fmt.Println("parse offer: ", len(offer))
@@ -96,9 +111,9 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration) ht
 				} else {
 					fmt.Println("parse offer error:", err)
 				}
-				//fmt.Println("http request len: ", len(body))
-				req.Body = ioutil.NopCloser(bytes.NewReader(body))
 			}
+			//fmt.Println("http request len: ", len(body))
+			req.Body = ioutil.NopCloser(bytes.NewReader(body))
 		},
 		FlushInterval: flush,
 		Transport:     tr,
@@ -107,8 +122,8 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration) ht
 				return nil
 			}
 
-			check := resp.Request.Header.Get(kHttpHeaderWebrtcCheck)
-			if check != "1" {
+			hijack := resp.Request.Header.Get(kHttpHeaderWebrtcHijack)
+			if len(hijack) == 0 {
 				return nil
 			}
 
@@ -120,13 +135,15 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration) ht
 				return nil
 			}
 
-			if jresp, err := ParseUmsResponse(body); err == nil {
-				answer := []byte(jresp.GetAnswer())
-				//fmt.Println("parse answer: ", len(answer))
-				adminChan := Inst().ChanAdmin()
-				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer)
-			} else {
-				fmt.Println("parse answer error:", err)
+			if hijack == "ums" {
+				if jresp, err := ParseUmsResponse(body); err == nil {
+					answer := []byte(jresp.GetAnswer())
+					//fmt.Println("parse answer: ", len(answer))
+					adminChan := Inst().ChanAdmin()
+					adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer)
+				} else {
+					fmt.Println("parse answer error:", err)
+				}
 			}
 
 			//fmt.Println("http response body: ", len(body), ", request:", resp.Request.ContentLength)
@@ -314,9 +331,9 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case accept == "text/event-stream":
 		// use the flush interval for SSE (server-sent events)
 		// must be > 0s to be effective
-		h = newHTTPProxy(targetURL, tr, p.Config.FlushInterval)
+		h = newHTTPProxy(targetURL, tr, p.Config.FlushInterval, p.Config)
 	default:
-		h = newHTTPProxy(targetURL, tr, p.Config.GlobalFlushInterval)
+		h = newHTTPProxy(targetURL, tr, p.Config.GlobalFlushInterval, p.Config)
 	}
 
 	if p.Config.GZIPContentTypes != nil {
