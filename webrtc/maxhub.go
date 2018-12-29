@@ -12,6 +12,7 @@ import (
 type OneServer interface {
 	Run()
 	Exit()
+	Params() *NetParams
 }
 
 type HubMessage struct {
@@ -56,8 +57,12 @@ func NewMaxHub() *MaxHub {
 // admin
 func (h *MaxHub) OnAdminData(msg *HubMessage) {
 	// TODO: process offer/answer
-	action := msg.misc.(WebrtcAction)
-	if action == WebrtcActionOffer {
+	misc, ok := msg.misc.(*WebrtcAction)
+	if !ok {
+		log.Warnln("[maxhub] invalid admin message")
+		return
+	}
+	if misc.action == WebrtcActionOffer {
 		var desc MediaDesc
 		if !desc.Parse(msg.data) {
 			log.Println("[maxhub] invalid offer")
@@ -66,7 +71,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		ufrag := desc.GetUfrag() + "_offer"
 		log.Println("[maxhub] outer offer ufrag: ", ufrag)
 		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
-	} else if action == WebrtcActionAnswer {
+	} else if misc.action == WebrtcActionAnswer {
 		var desc MediaDesc
 		if !desc.Parse(msg.data) {
 			log.Println("[maxhub] invalid answer")
@@ -76,7 +81,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		log.Println("[maxhub] inner answer ufrag: ", ufrag)
 		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
 	} else {
-		log.Println("[maxhub] invalid admin action=", action)
+		log.Println("[maxhub] invalid admin action=", misc.action)
 	}
 }
 
@@ -218,6 +223,14 @@ func (h *MaxHub) ChanAdmin() chan interface{} {
 
 func (h *MaxHub) AddServer(server OneServer) {
 	h.servers = append(h.servers, server)
+}
+
+func (h *MaxHub) Candidates() []string {
+	var candidates []string
+	for _, svr := range h.servers {
+		candidates = append(candidates, svr.Params().Candidates...)
+	}
+	return candidates
 }
 
 func (h *MaxHub) Exit() {

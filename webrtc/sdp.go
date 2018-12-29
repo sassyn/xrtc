@@ -165,6 +165,7 @@ type MediaAttr struct {
 	ssrcs       []*SsrcInfo       // a=ssrc:..
 	msids       []string          // a=msid:..
 	sctp        *SctpInfo         // a=sctpmap: or a=sctp-port:
+	candidates  []string
 
 	// for anwser
 	av_rtpmaps   map[string]*RtpMapInfo
@@ -192,6 +193,7 @@ func (a *MediaAttr) GetSsrcs() *SSRC {
 type MediaSdp struct {
 	owner         string       // o=..
 	source        string       // s=..
+	ice_lite      bool         // a=ice-lite
 	ice_options   string       // global a=ice-options:..
 	fingerprint   StringPair   // global a=fingerprint:sha-256 ..
 	group_bundles []string     // a=group:BUNDLE ..
@@ -205,6 +207,11 @@ type MediaSdp struct {
 func (m *MediaSdp) parseSdp(data []byte) bool {
 	var mattr *MediaAttr
 	lines := strings.Split(string(data), "\r\n")
+	if len(lines) <= 1 {
+		lines = strings.Split(string(data), "\n")
+	}
+
+	log.Println("[sdp] parseSdp, lines=", len(lines))
 	for item := range lines {
 		line := []byte(lines[item])
 		if len(line) <= 2 || line[1] != '=' {
@@ -255,6 +262,11 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 	fields := strings.SplitN(string(line[2:]), ":", 2)
 	akey := fields[0]
 	if len(fields) == 1 {
+		if akey == "ice-lite" {
+			m.ice_lite = true
+			return
+		}
+
 		if media == nil {
 			log.Warnln("[sdp] no valid media for line=", string(line[:]))
 			return
@@ -432,6 +444,8 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 		}
 	} else if akey == "sctp-port" {
 		media.sctp = &SctpInfo{port: Atoi(fields[1])}
+	} else if akey == "candidate" {
+		media.candidates = append(media.candidates, string(line))
 	} else {
 		log.Println("[sdp] unsupported attr=", akey)
 	}
@@ -465,6 +479,8 @@ func (m *MediaDesc) GetUfrag() string {
 		return m.Sdp.audios[0].ice_ufrag
 	} else if mt == kMediaVideo {
 		return m.Sdp.videos[0].ice_ufrag
+	} else if mt == kMediaAudioVideo {
+		return m.Sdp.audios[0].ice_ufrag
 	} else {
 		log.Println("[desc] invalid media type = ", mt)
 		return ""
@@ -477,6 +493,8 @@ func (m *MediaDesc) GetPasswd() string {
 		return m.Sdp.audios[0].ice_pwd
 	} else if mt == kMediaVideo {
 		return m.Sdp.videos[0].ice_pwd
+	} else if mt == kMediaAudioVideo {
+		return m.Sdp.audios[0].ice_pwd
 	} else {
 		log.Println("[desc] invalid media type = ", mt)
 		return ""
@@ -798,4 +816,31 @@ func (m *MediaDesc) AnswerSdp() string {
 	prefix = append(prefix, bundles, semantics)
 	sdp := append(prefix, body...)
 	return strings.Join(sdp, "\n")
+}
+
+func ReplaceSdpCandidates(data []byte, candidates []string) []byte {
+	if len(candidates) == 0 {
+		return data
+	}
+
+	sp := "\r\n"
+	lines := strings.Split(string(data), "\r\n")
+	if len(lines) <= 1 {
+		sp = "\n"
+		lines = strings.Split(string(data), "\n")
+	}
+
+	var sdp []string
+	log.Println("[sdp] replace candidates, sdp lines=", len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(line, "a=candidate:") {
+			// skip
+		} else if strings.HasPrefix(line, "a=end-of-candidates") {
+			sdp = append(sdp, candidates...)
+			sdp = append(sdp, line)
+		} else {
+			sdp = append(sdp, line)
+		}
+	}
+	return []byte(strings.Join(sdp, sp))
 }

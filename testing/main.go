@@ -87,4 +87,7 @@ func TestYaml() {
 		return
 	}
 	log.Println("[yaml] load success")
+
+	hub := webrtc.Inst()
+	log.Println("[yaml] candidates:", hub.Candidates())
 }

@@ -9,20 +9,26 @@ import (
 const kDefaultConfig = "/tmp/etc/routes.yml"
 
 /// external interfaces
-type WebrtcAction uint32
 
 const (
-	WebrtcActionUnknown WebrtcAction = iota
+	WebrtcActionUnknown = iota
 	WebrtcActionOffer
 	WebrtcActionAnswer
 )
 
-func NewWebrtcAction(data []byte, action WebrtcAction) interface{} {
-	return NewHubMessage(data, nil, nil, action)
+type WebrtcAction struct {
+	action int
+	tag    string
+}
+
+func NewWebrtcAction(data []byte, action int, tag string) interface{} {
+	misc := &WebrtcAction{action, tag}
+	return NewHubMessage(data, nil, nil, misc)
 }
 
 type Webrtc interface {
 	ChanAdmin() chan interface{}
+	Candidates() []string
 	Exit()
 }
 

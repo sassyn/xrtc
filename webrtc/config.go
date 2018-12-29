@@ -110,11 +110,11 @@ func (c *Config) Load(fname string) bool {
 		switch proto.String() {
 		case "udp":
 			udpsvr := NewUDPConfig(key)
-			udpsvr.Net.Load(netp)
+			udpsvr.Net.Load(netp, "udp")
 			c.UdpServers[key] = udpsvr
 		case "tcp":
 			tcpsvr := NewTCPConfig(key)
-			tcpsvr.Net.Load(netp)
+			tcpsvr.Net.Load(netp, "tcp")
 			enableHttp := IsYamlString(server.Key("enable_http"))
 			log.Println("[config] check tcp's enable_http=", enableHttp)
 			tcpsvr.EnableHttp = (enableHttp == "true")
@@ -126,7 +126,7 @@ func (c *Config) Load(fname string) bool {
 			c.TcpServers[key] = tcpsvr
 		case "http":
 			httpsvr := NewHTTPConfig(key)
-			httpsvr.Net.Load(netp)
+			httpsvr.Net.Load(netp, "")
 			if httpp, err := IsYamlMap(server.Key("http")); err == nil {
 				httpsvr.Http.Load(httpp)
 			}
@@ -140,17 +140,57 @@ func (c *Config) Load(fname string) bool {
 	return true
 }
 
+func loadCandidateIP(node yaml.List, err error) []string {
+	var ips []string
+	if err == nil {
+		for _, ip := range node {
+			ips = append(ips, IsYamlString(ip))
+		}
+	}
+	return ips
+}
+
 /// Net basic params
 type NetParams struct {
 	Addr       string // "host:port"
 	TlsCrtFile string
 	TlsKeyFile string
+	Candidates []string // candidate ip
 }
 
-func (n *NetParams) Load(node yaml.Map) {
+func (n *NetParams) Load(node yaml.Map, proto string) {
 	n.Addr = IsYamlString(node.Key("addr"))
 	n.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
 	n.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
+
+	for {
+		var port string
+		var err error
+		if _, port, err = net.SplitHostPort(n.Addr); err != nil {
+			log.Warnln("[config] wrong addr:", n.Addr, err)
+			break
+		}
+		var ips yaml.List
+		if ips, err = IsYamlList(node.Key("ips")); err != nil {
+			break
+		}
+		for _, ip := range ips {
+			szip := IsYamlString(ip)
+			if len(szip) == 0 {
+				continue
+			}
+			var candidate string
+			if proto == "udp" {
+				candidate = fmt.Sprintf("a=candidate:3159811271 1 udp 2113937151 %s %s typ host", szip, port)
+			} else if proto == "tcp" {
+				candidate = fmt.Sprintf("a=candidate:4074051639 1 tcp 1518280447 %s %s typ host tcptype passive", szip, port)
+			} else {
+				continue
+			}
+			n.Candidates = append(n.Candidates, candidate)
+		}
+		break
+	}
 	log.Println("[config] net:", n)
 }
 

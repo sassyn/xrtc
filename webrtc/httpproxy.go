@@ -7,7 +7,6 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -39,11 +38,11 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 	var err error
 
 	if body, err = readHTTPBody(httpBody); err != nil {
-		fmt.Println("invalid http body, err=", err)
+		log.Println("invalid http body, err=", err)
 		return nil, err
 	}
 
-	//fmt.Println("http body encoding: ", encoding)
+	//log.Println("http body encoding: ", encoding)
 	if encoding == "gzip" {
 		var zr *gzip.Reader
 		if zr, err = gzip.NewReader(bytes.NewReader(body)); err == nil {
@@ -92,6 +91,7 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 				}
 			}
 			if len(hijack) == 0 {
+				log.Warnln("[proxy] no hijack for path=", req.URL.Path)
 				return
 			}
 
@@ -99,20 +99,36 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 			encoding := req.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(req.Body, encoding)
 			if body == nil || err != nil {
-				fmt.Println("invalid reqeust body, err=", err)
+				log.Println("[proxy] invalid reqeust body, err=", err)
 				return
 			}
+
+			adminChan := Inst().ChanAdmin()
 			if hijack == "ums" {
 				if jreq, err := ParseUmsRequest(body); err == nil {
 					offer := []byte(jreq.GetOffer())
-					//fmt.Println("parse offer: ", len(offer))
-					adminChan := Inst().ChanAdmin()
-					adminChan <- NewWebrtcAction(offer, WebrtcActionOffer)
+					//log.Println("parse ums offer: ", len(offer))
+					adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
 				} else {
-					fmt.Println("parse offer error:", err)
+					log.Println("[proxy] parse ums offer error:", err)
+				}
+			} else if hijack == "janus" {
+				//log.Println("parse janus request: ", len(body))
+				if jreq, err := ParseJanusRequest(body); err == nil {
+					if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
+						//log.Println("[proxy] parse janus-request offer:", jreq.Jsep.Sdp)
+						offer := []byte(jreq.Jsep.Sdp)
+						adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
+					} else if jreq.Janus == kJanusTrickle && jreq.Candidate != nil {
+						log.Println("[proxy] parse janus-request candidate, sdpMid:", jreq.Candidate.SdpMid)
+					} else {
+						log.Println("[proxy] parse janus-request:", jreq.Janus)
+					}
+				} else {
+					log.Println("[proxy] parse janus-request error:", err, string(body))
 				}
 			}
-			//fmt.Println("http request len: ", len(body))
+			//log.Println("http request len: ", len(body))
 			req.Body = ioutil.NopCloser(bytes.NewReader(body))
 		},
 		FlushInterval: flush,
@@ -124,29 +140,51 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 
 			hijack := resp.Request.Header.Get(kHttpHeaderWebrtcHijack)
 			if len(hijack) == 0 {
-				return nil
+				for k, v := range cfg.Hijacks {
+					if strings.HasPrefix(resp.Request.URL.Path, k) {
+						hijack = v
+						break
+					}
+				}
+				if len(hijack) == 0 {
+					log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
+					return nil
+				}
 			}
 
 			// TODO: process response body
 			encoding := resp.Request.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(resp.Body, encoding)
 			if body == nil || err != nil {
-				fmt.Println("invalid http response body, err:", err)
+				log.Println("[proxy] invalid http response body, err:", err)
 				return nil
 			}
 
+			adminChan := Inst().ChanAdmin()
 			if hijack == "ums" {
 				if jresp, err := ParseUmsResponse(body); err == nil {
 					answer := []byte(jresp.GetAnswer())
-					//fmt.Println("parse answer: ", len(answer))
-					adminChan := Inst().ChanAdmin()
-					adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer)
+					//log.Println("parse ums answer: ", len(answer))
+					adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
 				} else {
-					fmt.Println("parse answer error:", err)
+					log.Println("[proxy] parse ums answer error:", err)
+				}
+			} else if hijack == "janus" {
+				//log.Println("parse janus response: ", len(body))
+				if jresp, err := ParseJanusResponse(body); err == nil {
+					if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
+						answer := ReplaceSdpCandidates([]byte(jresp.Jsep.Sdp), Inst().Candidates())
+						log.Println("[proxy] parse janus-response answer:", string(answer))
+						adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+					} else {
+						log.Println("[proxy] parse janus-response:", jresp.Janus, len(body))
+					}
+				} else {
+					log.Warnln("[proxy] parse janus-response error:", err, string(body))
 				}
 			}
 
-			//fmt.Println("http response body: ", len(body), ", request:", resp.Request.ContentLength)
+			//log.Println("http response body: ", len(body), ", request:", resp.Request.ContentLength)
 			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
 			resp.ContentLength = int64(len(body))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
@@ -232,7 +270,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[proxy] http/https req: %v, method:%v", r.URL.Path, r.Method)
+	log.Printf("[proxy] ServeHTTP, http/https req: %v, method:%v", r.URL.Path, r.Method)
 
 	if p.Config.RequestID != "" {
 		id := p.UUID
@@ -245,6 +283,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	t := p.Lookup(r)
 
 	if t == nil {
+		log.Warnln("[proxy] ServeHTTP, no route for path=", r.URL.Path)
 		status := p.Config.NoRouteStatus
 		if status < 100 || status > 999 {
 			status = http.StatusNotFound
@@ -266,7 +305,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RawQuery: r.URL.RawQuery,
 	}
 	_ = requestURL
-	log.Println("[proxy] requestURL:", requestURL)
+	//log.Println("[proxy] requestURL:", requestURL)
 
 	if t.RedirectCode != 0 && t.RedirectURL != nil {
 		http.Redirect(w, r, t.RedirectURL.String(), t.RedirectCode)
@@ -284,7 +323,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		targetURL.RawQuery = t.URL.RawQuery + "&" + r.URL.RawQuery
 	}
-	log.Println("[proxy] targetURL:", targetURL)
+	//log.Println("[proxy] targetURL:", targetURL)
 
 	if t.Host == "dst" {
 		r.Host = targetURL.Host
@@ -340,11 +379,12 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h = gziph.NewGzipHandler(h, p.Config.GZIPContentTypes)
 	}
 
-	log.Println("[proxy] http proxy begin")
+	//log.Println("[proxy] http proxy begin")
 	rw := &responseWriter{w: w}
 	h.ServeHTTP(rw, r)
-	log.Println("[proxy] http proxy ret=", rw.code)
+	//log.Println("[proxy] http proxy ret=", rw.code)
 	if rw.code <= 0 {
+		log.Warnln("[proxy] http proxy error=", rw.code)
 		return
 	}
 }

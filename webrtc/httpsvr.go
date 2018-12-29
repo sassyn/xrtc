@@ -38,6 +38,10 @@ func (s *HttpServer) GetSslFile() (string, string) {
 	return s.config.Net.TlsCrtFile, s.config.Net.TlsKeyFile
 }
 
+func (s *HttpServer) Params() *NetParams {
+	return &s.config.Net
+}
+
 func (s *HttpServer) Run() {
 	defer s.ln.Close()
 
@@ -140,9 +144,9 @@ func (h *HttpHandler) Process() bool {
 	}
 
 	// now it is plain conn for tcp/http
-	log.Println("[http] setup http/https for", h.conn.RemoteAddr())
+	//log.Println("[http] setup http/https for", h.conn.RemoteAddr())
 	http.Serve(NewHttpListener(h.conn), h.newHTTPProxyHandler())
-	log.Println("[http] success")
+	//log.Println("[http] setup success")
 	return true
 }
 
@@ -178,7 +182,7 @@ type HttpListener struct {
 }
 
 func (l *HttpListener) Accept() (net.Conn, error) {
-	log.Println("[http] HttpListener Accept.., ", l.used)
+	//log.Println("[http] HttpListener Accept.., ", l.used)
 	if !l.used {
 		l.used = true
 		return l.conn, nil
@@ -188,7 +192,7 @@ func (l *HttpListener) Accept() (net.Conn, error) {
 }
 
 func (l *HttpListener) Close() error {
-	log.Println("[http] HttpListener Close..,", l.closing)
+	//log.Println("[http] HttpListener Close..,", l.closing)
 	if l.closing {
 		l.conn.Close()
 	} else {

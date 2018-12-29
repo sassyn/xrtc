@@ -6,6 +6,8 @@ import (
 	log "github.com/PeterXu/xrtc/logging"
 )
 
+/// UMS Offer/Answer
+
 func ParseUmsRequest(data []byte) (*UmsRequestJson, error) {
 	var jreq UmsRequestJson
 	err := json.Unmarshal(data, &jreq)
@@ -86,4 +88,53 @@ type UmsRequestJson struct {
 type UmsResponseJson struct {
 	Action UmsAction `json:"action"`
 	Code   string    `json:"code"`
+}
+
+/// Janus Offer/Answer/Candidate
+
+const kJanusMessage = "message" // offer
+const kJanusTrickle = "trickle" // candidate
+const kJanusEvent = "event"     // answer
+
+func ParseJanusRequest(data []byte) (*JanusRequestJson, error) {
+	var jreq JanusRequestJson
+	err := json.Unmarshal(data, &jreq)
+	return &jreq, err
+}
+
+type JanusRequestJson struct {
+	Janus       string          `json:"janus"`
+	Body        *JanusBody      `json:"body, omitempty"`
+	Transaction string          `json:"transaction"`
+	Jsep        *JanusJsep      `json:"jsep, omitempty"`
+	Candidate   *JanusCandidate `json:"candidate, omitempty"`
+}
+
+func ParseJanusResponse(data []byte) (*JanusResponseJson, error) {
+	var jresp JanusResponseJson
+	err := json.Unmarshal(data, &jresp)
+	return &jresp, err
+}
+
+type JanusResponseJson struct {
+	Janus       string     `json:"janus"`
+	SessionId   int        `json:"session_id"`
+	Transaction string     `json:"transaction"`
+	Jsep        *JanusJsep `json:"jsep, omitempty"`
+}
+
+type JanusBody struct {
+	Audio bool `json:"audio"`
+	Video bool `json:"video"`
+}
+
+type JanusJsep struct {
+	Type string `json:"type"`
+	Sdp  string `json:"sdp"`
+}
+
+type JanusCandidate struct {
+	Candidate     string `json:"candidate"`
+	SdpMid        string `json:"sdpMid"`
+	SdpMLineIndex int    `json:"sdpMLineIndex"`
 }

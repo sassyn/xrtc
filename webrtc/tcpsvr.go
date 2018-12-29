@@ -88,6 +88,10 @@ func (s *TcpServer) GetSslFile() (string, string) {
 	return s.config.Net.TlsCrtFile, s.config.Net.TlsKeyFile
 }
 
+func (s *TcpServer) Params() *NetParams {
+	return &s.config.Net
+}
+
 func (s *TcpServer) Run() {
 	defer s.ln.Close()
 

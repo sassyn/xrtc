@@ -44,6 +44,10 @@ func NewUdpServer(hub *MaxHub, cfg *UDPConfig) *UdpServer {
 	return nil
 }
 
+func (u *UdpServer) Params() *NetParams {
+	return &u.config.Net
+}
+
 func (u *UdpServer) Exit() {
 }
 
