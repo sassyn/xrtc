@@ -1,6 +1,7 @@
 package webrtc
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"net"
@@ -83,16 +84,62 @@ func newWSHandler(host string, dial dialFunc) http.Handler {
 		out.SetReadDeadline(time.Time{})
 
 		errc := make(chan error, 2)
-		cp := func(dst io.Writer, src io.Reader) {
-			_, err := io.Copy(dst, src)
+		cp := func(dst io.Writer, src io.Reader, req bool) {
+			data := make([]byte, 256*1024)
+			for {
+				if n, err := src.Read(data[0:]); err != nil {
+					log.Warnf("[ws] req=%v, read error=", req, err)
+					break
+				} else {
+					buffer := readWebsocketFrame(data[0:n])
+					if _, err = dst.Write(buffer); err != nil {
+						log.Warnf("[ws] req=%v, write error=", req, err)
+					}
+				}
+			}
 			errc <- err
 		}
 
-		go cp(out, in)
-		go cp(in, out)
+		go cp(out, in, true)
+		go cp(in, out, false)
 		err = <-errc
 		if err != nil && err != io.EOF {
 			log.Printf("[INFO] WS error for %s. %s", r.URL, err)
 		}
 	})
+}
+
+func readWebsocketFrame(data []byte) []byte {
+	log.Println("[ws] peek message, size=", len(data))
+	frameReaderFactory := &hybiFrameReaderFactory{bufio.NewReader(bytes.NewReader(data))}
+	if frameIn, err := frameReaderFactory.NewFrameReader(); err == nil {
+		ret := 0
+		msg := make([]byte, len(data))
+		for {
+			if n, err := frameIn.Read(msg[ret:]); err == nil {
+				ret += n
+			} else {
+				log.Warnln("[ws] read err=", err)
+				break
+			}
+		}
+		log.Warnln("[ws] read msg=", ret, string(msg[0:ret]))
+
+		if frameReader, ok := frameIn.(*hybiFrameReader); ok {
+			var buffer bytes.Buffer
+			frameOut := hybiFrameWriter{bufio.NewWriter(&buffer), &frameReader.header}
+			frameOut.Write(msg[0:ret])
+			log.Warnln("[ws] new msg len=", buffer.Len())
+			return buffer.Bytes()
+			/*
+				frameWriterFactor := hybiFrameWriterFactory{bufio.NewWriter(&buffer), frameReader.header.MaskingKey != nil}
+				if frameOut, err := frameWriterFactor.NewFrameWriter(frameReader.header.OpCode); err == nil {
+					frameOut.Write(msg)
+					log.Warnln("[ws] new msg len=", buffer.Len())
+					return buffer.Bytes()
+				}
+			*/
+		}
+	}
+	return data
 }

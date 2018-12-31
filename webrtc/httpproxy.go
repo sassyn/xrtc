@@ -62,6 +62,68 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 	return body, err
 }
 
+func procWebrtcRequest(hijack string, body []byte) []byte {
+	adminChan := Inst().ChanAdmin()
+	if hijack == "ums" {
+		if jresp, err := ParseUmsResponse(body); err == nil {
+			answer := []byte(jresp.GetAnswer())
+			//log.Println("ums-response answer: ", len(answer))
+			adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+		} else {
+			log.Println("[proxy] ums-response error:", err)
+		}
+	} else if hijack == "janus" {
+		//log.Println("parse janus response: ", len(body))
+		if jresp, err := ParseJanusResponse(body); err == nil {
+			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
+				answer := []byte(jresp.Jsep.Sdp)
+				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+
+				jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
+				body = EncodeJanusResponse(jresp)
+				//log.Println("[proxy] janus-response answer:", len(answer), string(body))
+				return body
+			} else {
+				//log.Println("[proxy] janus-response:", jresp.Janus)
+			}
+		} else {
+			log.Warnln("[proxy] janus-response error:", err, string(body))
+		}
+	}
+	return nil
+}
+
+func procWebrtcResponse(hijack string, body []byte) []byte {
+	adminChan := Inst().ChanAdmin()
+	if hijack == "ums" {
+		if jresp, err := ParseUmsResponse(body); err == nil {
+			answer := []byte(jresp.GetAnswer())
+			//log.Println("ums-response answer: ", len(answer))
+			adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+		} else {
+			log.Println("[proxy] ums-response error:", err)
+		}
+	} else if hijack == "janus" {
+		//log.Println("parse janus response: ", len(body))
+		if jresp, err := ParseJanusResponse(body); err == nil {
+			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
+				answer := []byte(jresp.Jsep.Sdp)
+				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+
+				jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
+				body = EncodeJanusResponse(jresp)
+				//log.Println("[proxy] janus-response answer:", len(answer), string(body))
+				return body
+			} else {
+				//log.Println("[proxy] janus-response:", jresp.Janus)
+			}
+		} else {
+			log.Warnln("[proxy] janus-response error:", err, string(body))
+		}
+	}
+	return nil
+}
+
 func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
 	return &httputil.ReverseProxy{
 		// this is a simplified director function based on the
@@ -103,31 +165,10 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 				return
 			}
 
-			adminChan := Inst().ChanAdmin()
-			if hijack == "ums" {
-				if jreq, err := ParseUmsRequest(body); err == nil {
-					offer := []byte(jreq.GetOffer())
-					//log.Println("ums-request offer: ", len(offer))
-					adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
-				} else {
-					log.Println("[proxy] ums-request error:", err)
-				}
-			} else if hijack == "janus" {
-				//log.Println("janus-request: ", len(body))
-				if jreq, err := ParseJanusRequest(body); err == nil {
-					if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
-						//log.Println("[proxy] parse janus-request offer:", jreq.Jsep.Sdp)
-						offer := []byte(jreq.Jsep.Sdp)
-						adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
-					} else if jreq.Janus == kJanusTrickle && jreq.Candidate != nil {
-						log.Println("[proxy] janus-request candidate, sdpMid:", jreq.Candidate.SdpMid)
-					} else {
-						//log.Println("[proxy] janus-request others:", jreq.Janus)
-					}
-				} else {
-					log.Println("[proxy] parse janus-request error:", err, string(body))
-				}
+			if newdata := procWebrtcRequest(hijack, body); newdata != nil {
+				body = newdata
 			}
+
 			//log.Println("http request len: ", len(body))
 			req.Body = ioutil.NopCloser(bytes.NewReader(body))
 		},
@@ -161,31 +202,8 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 				return nil
 			}
 
-			adminChan := Inst().ChanAdmin()
-			if hijack == "ums" {
-				if jresp, err := ParseUmsResponse(body); err == nil {
-					answer := []byte(jresp.GetAnswer())
-					//log.Println("ums-response answer: ", len(answer))
-					adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
-				} else {
-					log.Println("[proxy] ums-response error:", err)
-				}
-			} else if hijack == "janus" {
-				//log.Println("parse janus response: ", len(body))
-				if jresp, err := ParseJanusResponse(body); err == nil {
-					if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
-						answer := []byte(jresp.Jsep.Sdp)
-						adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
-
-						jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
-						body = EncodeJanusResponse(jresp)
-						//log.Println("[proxy] janus-response answer:", len(answer), string(body))
-					} else {
-						//log.Println("[proxy] janus-response:", jresp.Janus)
-					}
-				} else {
-					log.Warnln("[proxy] janus-response error:", err, string(body))
-				}
+			if newdata := procWebrtcResponse(hijack, body); newdata != nil {
+				body = newdata
 			}
 
 			//log.Println("[proxy] http response body: ", len(body))
