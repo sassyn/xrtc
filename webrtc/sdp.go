@@ -501,6 +501,20 @@ func (m *MediaDesc) GetPasswd() string {
 	}
 }
 
+func (m *MediaDesc) GetCandidates() []string {
+	mt := m.GetMediaType()
+	if mt == kMediaAudio {
+		return m.Sdp.audios[0].candidates
+	} else if mt == kMediaVideo {
+		return m.Sdp.videos[0].candidates
+	} else if mt == kMediaAudioVideo {
+		return m.Sdp.audios[0].candidates
+	} else {
+		log.Println("[desc] invalid media type = ", mt)
+		return nil
+	}
+}
+
 func (m *MediaDesc) CreateAnswer() bool {
 	var ret bool
 	send_ice_ufrag := "xrtc_" + RandomString(32)
@@ -843,4 +857,23 @@ func ReplaceSdpCandidates(data []byte, candidates []string) []byte {
 		}
 	}
 	return []byte(strings.Join(sdp, sp))
+}
+
+func GetSdpCandidates(data []byte) []string {
+	lines := strings.Split(string(data), "\r\n")
+	if len(lines) <= 1 {
+		lines = strings.Split(string(data), "\n")
+	}
+
+	var candidates []string
+	//log.Println("[sdp] replace candidates, sdp lines=", len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(line, "a=candidate:") {
+			candidates = append(candidates, line)
+			// skip
+		} else if strings.HasPrefix(line, "a=end-of-candidates") {
+			break
+		}
+	}
+	return candidates
 }

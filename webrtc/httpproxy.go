@@ -174,11 +174,12 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 				//log.Println("parse janus response: ", len(body))
 				if jresp, err := ParseJanusResponse(body); err == nil {
 					if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
-						answer := ReplaceSdpCandidates([]byte(jresp.Jsep.Sdp), Inst().Candidates())
+						answer := []byte(jresp.Jsep.Sdp)
 						adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
-						jresp.Jsep.Sdp = string(answer)
+
+						jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
 						body = EncodeJanusResponse(jresp)
-						log.Println("[proxy] janus-response answer:", len(answer), string(body))
+						//log.Println("[proxy] janus-response answer:", len(answer), string(body))
 					} else {
 						//log.Println("[proxy] janus-response:", jresp.Janus)
 					}

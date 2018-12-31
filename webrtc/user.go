@@ -57,7 +57,7 @@ func (u *User) setOfferAnswer(offer, answer string) bool {
 		return false
 	}
 
-	u.startService()
+	u.startService(desc2.GetCandidates())
 
 	return true
 }
@@ -133,15 +133,16 @@ func (u *User) dispose() {
 	}
 }
 
-func (u *User) startService() {
+func (u *User) startService(candidates []string) {
 	if u.service != nil {
 		return
 	}
 
 	log.Println("[user] start service")
+	log.Println("[user] candidates=", candidates)
 	sufrag, spwd := u.getRecvIce()
 	rufrag, rpwd := u.getSendIce()
-	remoteSdp := genServiceSdp("application", rufrag, rpwd, nil)
+	remoteSdp := genServiceSdp("application", rufrag, rpwd, candidates)
 
 	log.Println("[user] init service, sendfragpwd=", sufrag, spwd, len(sufrag), len(spwd))
 	log.Println("[user] init service, recvfragpwd=", rufrag, rpwd, len(rufrag), len(rpwd))

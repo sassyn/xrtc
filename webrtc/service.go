@@ -165,8 +165,11 @@ func genServiceSdp(media, ufrag, pwd string, candidates []string) string {
 	lines = append(lines, "c=IN IP4 0.0.0.0")
 	lines = append(lines, "a=ice-ufrag:"+ufrag)
 	lines = append(lines, "a=ice-pwd:"+pwd)
-	lines = append(lines, kDefaultUdpCandidate)
-	//lines = append(lines, kDefaultTcpCandidate)
-	//lines = append(lines, candidates...)
+	if candidates != nil {
+		lines = append(lines, candidates...)
+	} else {
+		lines = append(lines, kDefaultUdpCandidate)
+		//lines = append(lines, kDefaultTcpCandidate)
+	}
 	return strings.Join(lines, "\n")
 }
