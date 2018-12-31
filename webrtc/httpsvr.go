@@ -152,13 +152,21 @@ func (h *HttpHandler) Process() bool {
 
 func (h *HttpHandler) newHTTPProxyHandler() http.Handler {
 	return NewHTTPProxyHandle(h.svr.config.Http, func(r *http.Request) *RouteTarget {
+		//log.Println("[http] route, req:", r.Header)
 		if h.svr.config.Http.Routes != nil {
+			routePath := r.Header.Get("Sec-Websocket-Protocol")
+			if len(routePath) > 0 {
+				routePath = "ws@" + routePath
+			} else {
+				routePath = r.URL.Path
+			}
+
 			for _, item := range h.svr.config.Http.Routes {
 				uri, err := url.Parse(item.second)
 				if err != nil {
 					continue
 				}
-				if strings.HasPrefix(r.URL.Path, item.first) {
+				if strings.HasPrefix(routePath, item.first) {
 					return &RouteTarget{
 						Service:       h.svr.config.Name,
 						TLSSkipVerify: true,
