@@ -15,6 +15,7 @@ services:
             hijacks:
                 - /board:   ums
                 - /janus:   janus
+                - ws@janus-protocol: janus
             routes:
                 - /test:    http://127.0.0.1:8080
                 - /out:     http://127.0.0.1:8080
@@ -27,8 +28,6 @@ services:
             addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
-            ips:
-                - 101.132.177.1
         enable_http: true
         http:
             max_conns:              4
