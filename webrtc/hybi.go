@@ -14,10 +14,13 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
+
+	"log"
 )
 
 const (
@@ -67,6 +70,10 @@ var (
 	ErrBadClosingStatus      = &ProtocolError{"bad closing status"}
 	ErrUnsupportedExtensions = &ProtocolError{"unsupported extensions"}
 	ErrNotImplemented        = &ProtocolError{"not implemented"}
+
+	ErrPingMessage  = errors.New("ping message")
+	ErrPongMessage  = errors.New("pong message")
+	ErrCloseMessage = errors.New("close message")
 
 	handshakeHeader = map[string]bool{
 		"Host":                   true,
@@ -280,6 +287,23 @@ func (buf hybiFrameWriterFactory) NewFrameWriter(payloadType byte) (frame frameW
 	return &hybiFrameWriter{writer: buf.Writer, header: frameHeader}, nil
 }
 
+func (buf hybiFrameWriterFactory) NewFrameWriterByReader(r frameReader) (frame frameWriter, err error) {
+	// r should be a complete frame
+	rframe, ok := r.(*hybiFrameReader)
+	if !ok {
+		return nil, errors.New("frameReader is not hybiFrameReader!")
+	}
+	frameHeader := &rframe.header
+	frameHeader.Fin = true
+	if buf.needMaskingKey && frameHeader.MaskingKey == nil {
+		frameHeader.MaskingKey, err = generateMaskingKey()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &hybiFrameWriter{writer: buf.Writer, header: frameHeader}, nil
+}
+
 type hybiFrameHandler struct {
 	conn        *WsConn
 	payloadType byte
@@ -295,20 +319,19 @@ func (handler *hybiFrameHandler) HandleFrame(frame frameReader) (frameReader, er
 	case TextFrame, BinaryFrame:
 		handler.payloadType = frame.PayloadType()
 	case CloseFrame:
-		return nil, io.EOF
+		return frame, ErrCloseMessage
 	case PingFrame, PongFrame:
 		b := make([]byte, maxControlFramePayloadLength)
-		n, err := io.ReadFull(frame, b)
+		_, err := io.ReadFull(frame, b)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return nil, err
 		}
-		io.Copy(ioutil.Discard, frame)
+		//io.Copy(ioutil.Discard, frame)
 		if frame.PayloadType() == PingFrame {
-			if _, err := handler.WritePong(b[:n]); err != nil {
-				return nil, err
-			}
+			return frame, ErrPingMessage
+		} else {
+			return frame, ErrPongMessage
 		}
-		return nil, nil
 	}
 	return frame, nil
 }
@@ -339,14 +362,21 @@ func (handler *hybiFrameHandler) WritePong(msg []byte) (n int, err error) {
 	return n, err
 }
 
-// newHybiConn creates a new WebSocket connection speaking hybi draft protocol.
-func newHybiConn(buf *bufio.ReadWriter, rwc io.ReadWriteCloser, server bool) *WsConn {
-	if buf == nil {
-		br := bufio.NewReader(rwc)
-		bw := bufio.NewWriter(rwc)
-		buf = bufio.NewReadWriter(br, bw)
+func (handler *hybiFrameHandler) WritePing(msg []byte) (n int, err error) {
+	handler.conn.wio.Lock()
+	defer handler.conn.wio.Unlock()
+	w, err := handler.conn.frameWriterFactory.NewFrameWriter(PingFrame)
+	if err != nil {
+		return 0, err
 	}
-	ws := &WsConn{server: server, buf: buf, rwc: rwc,
+	n, err = w.Write(msg)
+	w.Close()
+	return n, err
+}
+
+// newHybiConn creates a new WebSocket connection speaking hybi draft protocol.
+func newHybiConn(buf *bufio.ReadWriter, server bool) *WsConn {
+	ws := &WsConn{server: server, buf: buf,
 		frameReaderFactory: hybiFrameReaderFactory{buf.Reader},
 		frameWriterFactory: hybiFrameWriterFactory{
 			buf.Writer, !server},
@@ -357,13 +387,13 @@ func newHybiConn(buf *bufio.ReadWriter, rwc io.ReadWriteCloser, server bool) *Ws
 }
 
 // newHybiClientConn creates a client WebSocket connection after handshake.
-func newHybiClientConn(buf *bufio.ReadWriter, rwc io.ReadWriteCloser) *WsConn {
-	return newHybiConn(buf, rwc, false)
+func newHybiClientConn(buf *bufio.ReadWriter) *WsConn {
+	return newHybiConn(buf, false)
 }
 
 // newHybiServerConn returns a new WebSocket connection speaking hybi draft protocol.
-func newHybiServerConn(buf *bufio.ReadWriter, rwc io.ReadWriteCloser) *WsConn {
-	return newHybiConn(buf, rwc, true)
+func newHybiServerConn(buf *bufio.ReadWriter) *WsConn {
+	return newHybiConn(buf, true)
 }
 
 // generateMaskingKey generates a masking key for a frame.
@@ -452,16 +482,19 @@ type frameWriter interface {
 // frameWriterFactory is an interface to create new frame writer.
 type frameWriterFactory interface {
 	NewFrameWriter(payloadType byte) (w frameWriter, err error)
+	NewFrameWriterByReader(r frameReader) (w frameWriter, err error)
 }
 
 type frameHandler interface {
 	HandleFrame(frame frameReader) (r frameReader, err error)
 	WriteClose(status int) (err error)
+	WritePong(msg []byte) (n int, err error)
+	WritePing(msg []byte) (n int, err error)
 }
 
+// Websocket Connection
 type WsConn struct {
 	buf *bufio.ReadWriter
-	rwc io.ReadWriteCloser
 
 	server bool
 
@@ -477,10 +510,10 @@ type WsConn struct {
 	defaultCloseStatus int
 }
 
-func (ws *WsConn) readWSFrame(msg []byte) (n int, err error) {
+func (ws *WsConn) Read(msg []byte) (n int, err error) {
 	ws.rio.Lock()
 	defer ws.rio.Unlock()
-again:
+	//again:
 	if ws.frameReader == nil {
 		frame, err := ws.frameReaderFactory.NewFrameReader()
 		if err != nil {
@@ -488,19 +521,96 @@ again:
 		}
 		ws.frameReader, err = ws.frameHandler.HandleFrame(frame)
 		if err != nil {
-			return 0, err
+			// It maybe control frame(ping/pong/close)
+			if ws.frameReader != nil {
+				return ws.frameReader.Read(msg)
+			} else {
+				return 0, err
+			}
 		}
 		if ws.frameReader == nil {
-			goto again
+			//goto again
+			return 0, io.EOF
 		}
 	}
+
 	n, err = ws.frameReader.Read(msg)
 	if err == io.EOF {
 		if trailer := ws.frameReader.TrailerReader(); trailer != nil {
 			io.Copy(ioutil.Discard, trailer)
 		}
 		ws.frameReader = nil
-		goto again
+		//goto again
+		return 0, err
 	}
 	return n, err
+}
+
+func (ws *WsConn) ReadFrame(msg []byte) (n int, err error) {
+	pos := 0
+	errNum := 0
+
+	for {
+		n, err := ws.Read(msg[pos:])
+		if err == io.EOF {
+			if pos > 0 {
+				break
+			}
+			if errNum > 3 {
+				log.Println("hybi err=", err)
+				return 0, err
+			}
+			errNum++
+			Sleep(5)
+			continue
+		}
+		pos += n
+		if err != nil {
+			return pos, err
+		}
+	}
+	return pos, nil
+}
+
+func (ws *WsConn) WriteControl(msg []byte, err error) {
+	if err == ErrPingMessage {
+		ws.frameHandler.WritePing(msg)
+	} else if err == ErrPongMessage {
+		ws.frameHandler.WritePong(msg)
+	} else if err == ErrCloseMessage {
+		ws.frameHandler.WriteClose(0)
+	}
+}
+
+// Write implements the io.Writer interface:
+// it writes data as a frame to the WebSocket connection.
+func (ws *WsConn) WriteByHeader(msg []byte) (n int, err error) {
+	ws.wio.Lock()
+	defer ws.wio.Unlock()
+	w, err := ws.frameWriterFactory.NewFrameWriterByReader(ws.frameReader)
+	if err != nil {
+		return 0, err
+	}
+	n, err = w.Write(msg)
+	w.Close()
+	return n, err
+}
+
+// Write implements the io.Writer interface:
+// it writes data as a frame to the WebSocket connection.
+func (ws *WsConn) Write(msg []byte) (n int, err error) {
+	ws.wio.Lock()
+	defer ws.wio.Unlock()
+	w, err := ws.frameWriterFactory.NewFrameWriter(ws.PayloadType)
+	if err != nil {
+		return 0, err
+	}
+	n, err = w.Write(msg)
+	w.Close()
+	return n, err
+}
+
+// Close implements the io.Closer interface.
+func (ws *WsConn) Close() error {
+	return ws.frameHandler.WriteClose(ws.defaultCloseStatus)
 }

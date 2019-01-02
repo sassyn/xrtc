@@ -86,6 +86,7 @@ func (c *Connection) onRecvData(data []byte) {
 	if IsStunPacket(data) {
 		var msg IceMessage
 		if !msg.Read(data) {
+			// TODO: dtype= 1
 			log.Warnln("[conn] invalid stun message, dtype=", msg.dtype)
 			return
 		}

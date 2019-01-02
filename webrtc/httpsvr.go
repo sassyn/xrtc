@@ -161,6 +161,14 @@ func (h *HttpHandler) newHTTPProxyHandler() http.Handler {
 				routePath = r.URL.Path
 			}
 
+			var hijack string
+			for key, val := range h.svr.config.Http.Hijacks {
+				if strings.HasPrefix(routePath, key) {
+					hijack = val
+					break
+				}
+			}
+
 			for _, item := range h.svr.config.Http.Routes {
 				uri, err := url.Parse(item.second)
 				if err != nil {
@@ -169,6 +177,7 @@ func (h *HttpHandler) newHTTPProxyHandler() http.Handler {
 				if strings.HasPrefix(routePath, item.first) {
 					return &RouteTarget{
 						Service:       h.svr.config.Name,
+						Hijack:        hijack,
 						TLSSkipVerify: true,
 						URL:           uri,
 					}

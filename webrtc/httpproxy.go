@@ -65,29 +65,25 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 func procWebrtcRequest(hijack string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
 	if hijack == "ums" {
-		if jresp, err := ParseUmsResponse(body); err == nil {
-			answer := []byte(jresp.GetAnswer())
-			//log.Println("ums-response answer: ", len(answer))
-			adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
+		if jreq, err := ParseUmsRequest(body); err == nil {
+			offer := []byte(jreq.GetOffer())
+			//log.Println("ums-request offer: ", len(offer))
+			adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
 		} else {
-			log.Println("[proxy] ums-response error:", err)
+			log.Println("[proxy] ums-resquest error:", err)
 		}
 	} else if hijack == "janus" {
-		//log.Println("parse janus response: ", len(body))
-		if jresp, err := ParseJanusResponse(body); err == nil {
-			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
-				answer := []byte(jresp.Jsep.Sdp)
-				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
-
-				jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
-				body = EncodeJanusResponse(jresp)
-				//log.Println("[proxy] janus-response answer:", len(answer), string(body))
-				return body
+		//log.Println("parse janus request: ", len(body))
+		if jreq, err := ParseJanusRequest(body); err == nil {
+			if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
+				offer := []byte(jreq.Jsep.Sdp)
+				adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
+				// NOTE: donot required to update request
 			} else {
-				//log.Println("[proxy] janus-response:", jresp.Janus)
+				//log.Println("[proxy] janus-request:", jresp.Janus)
 			}
 		} else {
-			log.Warnln("[proxy] janus-response error:", err, string(body))
+			log.Warnln("[proxy] janus-request error:", err, string(body))
 		}
 	}
 	return nil
@@ -124,7 +120,7 @@ func procWebrtcResponse(hijack string, body []byte) []byte {
 	return nil
 }
 
-func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
+func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
 	return &httputil.ReverseProxy{
 		// this is a simplified director function based on the
 		// httputil.NewSingleHostReverseProxy() which does not
@@ -145,13 +141,6 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 			}
 
 			// TODO: process request body
-			hijack := ""
-			for k, v := range cfg.Hijacks {
-				if strings.HasPrefix(req.URL.Path, k) {
-					hijack = v
-					break
-				}
-			}
 			if len(hijack) == 0 {
 				log.Warnln("[proxy] no hijack for path=", req.URL.Path)
 				return
@@ -179,19 +168,9 @@ func newHTTPProxy(target *url.URL, tr http.RoundTripper, flush time.Duration, cf
 				return nil
 			}
 
-			hijack := resp.Request.Header.Get(kHttpHeaderWebrtcHijack)
-			//hijack = "janus"
 			if len(hijack) == 0 {
-				for k, v := range cfg.Hijacks {
-					if strings.HasPrefix(resp.Request.URL.Path, k) {
-						hijack = v
-						break
-					}
-				}
-				if len(hijack) == 0 {
-					log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
-					return nil
-				}
+				log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
+				return nil
 			}
 
 			// TODO: process response body
@@ -254,6 +233,9 @@ type RouteTarget struct {
 	// RedirectURL is the redirect target based on the request.
 	// This is cached here to prevent multiple generations per request.
 	RedirectURL *url.URL
+
+	// Hijack code
+	Hijack string
 }
 
 type HTTPProxyHandler struct {
@@ -383,18 +365,18 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case upgrade == "websocket" || upgrade == "Websocket":
 		r.URL = targetURL
 		if targetURL.Scheme == "https" || targetURL.Scheme == "wss" {
-			h = newWSHandler(targetURL.Host, func(network, address string) (net.Conn, error) {
+			h = newWSHandler(t.Hijack, targetURL.Host, func(network, address string) (net.Conn, error) {
 				return tls.Dial(network, address, tr.(*http.Transport).TLSClientConfig)
 			})
 		} else {
-			h = newWSHandler(targetURL.Host, net.Dial)
+			h = newWSHandler(t.Hijack, targetURL.Host, net.Dial)
 		}
 	case accept == "text/event-stream":
 		// use the flush interval for SSE (server-sent events)
 		// must be > 0s to be effective
-		h = newHTTPProxy(targetURL, tr, p.Config.FlushInterval, p.Config)
+		h = newHTTPProxy(t.Hijack, targetURL, tr, p.Config.FlushInterval, p.Config)
 	default:
-		h = newHTTPProxy(targetURL, tr, p.Config.GlobalFlushInterval, p.Config)
+		h = newHTTPProxy(t.Hijack, targetURL, tr, p.Config.GlobalFlushInterval, p.Config)
 	}
 
 	if p.Config.GZIPContentTypes != nil {

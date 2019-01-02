@@ -171,6 +171,7 @@ func (m *StunMessage) Read(data []byte) bool {
 	//log.Printf("[ice] message magic=%x, transId=%s\n", m.magic, m.transId)
 
 	if int(m.length) != buf.Len() {
+		// TODO: length= 80 , Len= 696
 		log.Println("[ice] invalid length=", m.length, ", Len=", buf.Len())
 		return false
 	}
