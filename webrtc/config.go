@@ -238,9 +238,9 @@ type HTTPConfig struct {
 var kDefaultHttpParams = HttpParams{
 	MaxConns:              100,
 	IdleConnTimeout:       time.Second * 30,
-	DialTimeout:           time.Second * 30,
+	DialTimeout:           time.Second * 10,
 	ResponseHeaderTimeout: time.Second * 30,
-	KeepAliveTimeout:      time.Second * 120,
+	KeepAliveTimeout:      time.Second * 1200,
 	GlobalFlushInterval:   time.Millisecond * 10,
 	FlushInterval:         time.Millisecond * 10,
 	RequestID:             "X-Request-Id",

@@ -253,58 +253,49 @@ func (h *TcpHandler) ServeTCP() {
 	go h.writing()
 
 	// reading
-	var err error
-	var nret int = 0
-	var rpos int = 0
-	rbuf := make([]byte, kMaxPacketSize+2)
+	head := make([]byte, 2)
+	rbuf := make([]byte, kMaxPacketSize)
 	sendChan := h.svr.hub.ChanRecvFromOuter()
 	quit := false
 
 loopTcpRead:
 	for !quit {
 		// read head(2bytes)
-		if nret, err = h.conn.Read(rbuf[rpos:2]); err != nil {
-			log.Println("[tcp] tcp read head fail, rpos=", rpos, ", err=", err)
-			quit = true
-			break loopTcpRead
-		}
-		rpos += nret
-		if rpos < 2 {
-			log.Println("[tcp] tcp no enough head(2bytes)")
-			continue
-		}
-
-		// get body size
-		var dsize uint16 = 0
-		tmpbuf := bytes.NewReader(rbuf[0:2])
-		ReadBig(tmpbuf, &dsize)
-		if dsize == 0 {
-			// only head without body
-			rpos = 0
-			log.Println("[tcp] tcp no body by head-len")
-			continue
-		}
-
-		// read body packet
-		rpos = 2
-		for {
-			need := int(dsize) + 2 - rpos
-			if nret, err = h.conn.Read(rbuf[rpos : rpos+need]); err != nil {
-				log.Println("[tcp] tcp error reading:", err)
-				quit = true
-				break loopTcpRead
-			}
-			rpos += nret
-			if rpos == int(dsize+2) {
-				// read body done
+		if nret, err := h.conn.Read(head[0:2]); err != nil {
+			log.Println("[tcp] tcp read head fail, err=", err)
+			break
+		} else {
+			h.recvCount += nret
+			if nret != 2 {
+				log.Warnln("[tcp] tcp read head < 2bytes and quit")
 				break
 			}
 		}
-		rpos = 0
+
+		// body size
+		dsize := HostToNet16(BytesToUint16(head))
+		if dsize == 0 {
+			log.Warnln("[tcp] tcp invalid body")
+			continue
+		}
+		log.Println("[tcp] tcp body size:", dsize)
+
+		// read body packet
+		rpos := 0
+		for rpos < int(dsize) {
+			need := int(dsize) - rpos
+			if nret, err := h.conn.Read(rbuf[rpos : rpos+need]); err != nil {
+				log.Warnln("[tcp] tcp error reading:", err)
+				quit = true
+				break loopTcpRead
+			} else {
+				rpos += nret
+				h.recvCount += nret
+			}
+		}
 
 		// forward
-		h.recvCount += int(2 + dsize)
-		sendChan <- NewHubMessage(rbuf[2:2+dsize], h.conn.RemoteAddr(), nil, h.chanRecv)
+		sendChan <- NewHubMessage(rbuf[0:dsize], h.conn.RemoteAddr(), nil, h.chanRecv)
 	}
 
 	h.exitTick <- true

@@ -13,5 +13,5 @@ clean:
 run: build
 	@go run main.go
 
-docker:
+docker: build
 	docker build -t $(NS)/$(REPO):$(VERSION) .
