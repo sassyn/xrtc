@@ -144,28 +144,29 @@ func NewMediaAttr(mtype, proto string) *MediaAttr {
 }
 
 type MediaAttr struct {
-	mtype       string            // m=
-	proto       string            // m=
-	ptypes      []string          // m=
-	ice_ufrag   string            // a=ice-ufrag:..
-	ice_pwd     string            // a=ice-pwd:..
-	ice_options string            // a=ice-options:..
-	fingerprint StringPair        // a=fingerprint:sha-256 ..
-	setup       string            // a=setup:..
-	direction   SdpMediaDirection // a=sendrecv/sendonly/recvonly
-	mid         string            // a=mid:..
-	msid        []*StringPair     // a=msid:{id1} {id2}
-	rtcp_mux    bool              // a=rtcp-mux
-	rtcp_rsize  bool              // a=rtcp-rsize
-	rtpmaps     []*RtpMapInfo     // a=rtpmap:..
-	fmtps       map[int]*FmtpInfo // a=fmtp:..
-	rtcp_fbs    []*RtcpFbInfo     // a=rtcp-fb:..
-	extmaps     []*ExtMapInfo     // a=extmap:..
-	fid_ssrcs   []*FidInfo        // a=ssrc-group:FID ..
-	ssrcs       []*SsrcInfo       // a=ssrc:..
-	msids       []string          // a=msid:..
-	sctp        *SctpInfo         // a=sctpmap: or a=sctp-port:
-	candidates  []string
+	mtype            string            // m=
+	proto            string            // m=
+	ptypes           []string          // m=
+	ice_ufrag        string            // a=ice-ufrag:..
+	ice_pwd          string            // a=ice-pwd:..
+	ice_options      string            // a=ice-options:..
+	fingerprint      StringPair        // a=fingerprint:sha-256 ..
+	setup            string            // a=setup:..
+	direction        SdpMediaDirection // a=sendrecv/sendonly/recvonly
+	mid              string            // a=mid:..
+	msid             []*StringPair     // a=msid:{id1} {id2}
+	rtcp_mux         bool              // a=rtcp-mux
+	rtcp_rsize       bool              // a=rtcp-rsize
+	rtpmaps          []*RtpMapInfo     // a=rtpmap:..
+	fmtps            map[int]*FmtpInfo // a=fmtp:..
+	rtcp_fbs         []*RtcpFbInfo     // a=rtcp-fb:..
+	extmaps          []*ExtMapInfo     // a=extmap:..
+	fid_ssrcs        []*FidInfo        // a=ssrc-group:FID ..
+	ssrcs            []*SsrcInfo       // a=ssrc:..
+	msids            []string          // a=msid:..
+	sctp             *SctpInfo         // a=sctpmap: or a=sctp-port:
+	max_message_size int               // a=max-message-size:
+	candidates       []string          // a=candidate:
 
 	// for anwser
 	av_rtpmaps   map[string]*RtpMapInfo
@@ -444,6 +445,8 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 		}
 	} else if akey == "sctp-port" {
 		media.sctp = &SctpInfo{port: Atoi(fields[1])}
+	} else if akey == "max-message-size" {
+		media.max_message_size = Atoi(fields[1])
 	} else if akey == "candidate" {
 		media.candidates = append(media.candidates, string(line))
 	} else {

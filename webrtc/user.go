@@ -83,6 +83,9 @@ func (u *User) getAnswer() string {
 func (u *User) addConnection(conn *Connection) {
 	if conn != nil && conn.getAddr() != nil {
 		u.connections[NetAddrString(conn.getAddr())] = conn
+		if u.activeConn == nil {
+			u.activeConn = conn
+		}
 	} else {
 		log.Println("[user] no conn or addr")
 	}

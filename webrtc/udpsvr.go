@@ -90,8 +90,8 @@ func (u *UdpServer) writing() {
 				if nb, err := u.conn.WriteTo(umsg.data, umsg.to); err != nil {
 					log.Println("[udp] send err:", err, nb)
 				} else {
-					u.sendCount += len(umsg.data)
-					//log.Println("[udp] send size:", nb)
+					log.Println("[udp] send size:", nb)
+					u.sendCount += nb
 				}
 			} else {
 				log.Println("[udp] not-send invalid msg")

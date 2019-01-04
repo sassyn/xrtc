@@ -67,16 +67,16 @@ func procWebrtcRequest(hijack string, body []byte) []byte {
 	if hijack == "ums" {
 		if jreq, err := ParseUmsRequest(body); err == nil {
 			offer := []byte(jreq.GetOffer())
-			//log.Println("ums-request offer: ", len(offer))
+			//log.Println("[proxy] ums-request offer: ", len(offer))
 			adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
 		} else {
-			log.Println("[proxy] ums-resquest error:", err)
+			log.Warnln("[proxy] ums-resquest error:", err)
 		}
 	} else if hijack == "janus" {
-		//log.Println("parse janus request: ", len(body))
 		if jreq, err := ParseJanusRequest(body); err == nil {
 			if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
 				offer := []byte(jreq.Jsep.Sdp)
+				//log.Println("[proxy] janus-request offer:", len(offer), string(offer))
 				adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
 				// NOTE: donot required to update request
 			} else {
@@ -94,21 +94,21 @@ func procWebrtcResponse(hijack string, body []byte) []byte {
 	if hijack == "ums" {
 		if jresp, err := ParseUmsResponse(body); err == nil {
 			answer := []byte(jresp.GetAnswer())
-			//log.Println("ums-response answer: ", len(answer))
+			//log.Println("[proxy] ums-response answer: ", len(answer))
 			adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
 		} else {
-			log.Println("[proxy] ums-response error:", err)
+			log.Warnln("[proxy] ums-response error:", err)
 		}
 	} else if hijack == "janus" {
-		//log.Println("parse janus response: ", len(body))
 		if jresp, err := ParseJanusResponse(body); err == nil {
 			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
 				answer := []byte(jresp.Jsep.Sdp)
+				//log.Println("[proxy] janus-response answer: ", len(answer), string(answer))
 				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
 
 				jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
 				body = EncodeJanusResponse(jresp)
-				//log.Println("[proxy] janus-response answer:", len(answer), string(body))
+				//log.Println("[proxy] janus-response answer2:", len(jresp.Jsep.Sdp), jresp.Jsep.Sdp)
 				return body
 			} else {
 				//log.Println("[proxy] janus-response:", jresp.Janus)

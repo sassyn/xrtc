@@ -15,3 +15,6 @@ run: build
 
 docker: build
 	docker build -t $(NS)/$(REPO):$(VERSION) .
+
+deploy: 
+	docker-compose up -d
