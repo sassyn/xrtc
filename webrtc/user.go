@@ -142,10 +142,10 @@ func (u *User) startService(candidates []string) {
 	}
 
 	log.Println("[user] start service")
-	log.Println("[user] candidates=", candidates)
 	sufrag, spwd := u.getRecvIce()
 	rufrag, rpwd := u.getSendIce()
 	remoteSdp := genServiceSdp("application", rufrag, rpwd, candidates)
+	log.Println("[user] candidates=", candidates, remoteSdp)
 
 	log.Println("[user] init service, sendfragpwd=", sufrag, spwd, len(sufrag), len(spwd))
 	log.Println("[user] init service, recvfragpwd=", rufrag, rpwd, len(rufrag), len(rpwd))

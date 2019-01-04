@@ -43,7 +43,7 @@ func (s *Service) Init(ufrag, pwd, remote string) bool {
 	s.agent.SetMinMaxPort(40000, 50000)
 	s.agent.SetLocalCredentials(ufrag, pwd)
 	if err := s.agent.GatherCandidates(); err != nil {
-		log.Println("[service] gather error:", err)
+		log.Warnln("[service] gather error:", err)
 		return false
 	}
 
@@ -53,12 +53,14 @@ func (s *Service) Init(ufrag, pwd, remote string) bool {
 	//log.Println("[service] remote sdp:", remote)
 	// required to get ice ufrag/password
 	if _, err := s.agent.ParseSdp(remote); err != nil {
-		log.Println("[service] ParseSdp, err=", err)
+		log.Warnln("[service] ParseSdp, err=", err)
 		return false
 	}
 
 	// optional if ParseSdp contains condidates
 	//s.agent.ParseCandidateSdp(cand)
+
+	log.Println("[service] Init ok")
 	return true
 }
 
@@ -165,11 +167,11 @@ func genServiceSdp(media, ufrag, pwd string, candidates []string) string {
 	lines = append(lines, "c=IN IP4 0.0.0.0")
 	lines = append(lines, "a=ice-ufrag:"+ufrag)
 	lines = append(lines, "a=ice-pwd:"+pwd)
-	if candidates != nil {
+	if candidates != nil && len(candidates) > 0 {
 		lines = append(lines, candidates...)
 	} else {
 		lines = append(lines, kDefaultUdpCandidate)
-		//lines = append(lines, kDefaultTcpCandidate)
+		lines = append(lines, kDefaultTcpCandidate)
 	}
 	return strings.Join(lines, "\n")
 }

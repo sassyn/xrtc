@@ -62,7 +62,7 @@ func (u *UdpServer) Run() {
 	sendChan := u.hub.ChanRecvFromOuter()
 	for {
 		if nret, raddr, err := u.conn.ReadFromUDP(buf[0:]); err == nil {
-			log.Println("[udp] recv msg size: ", nret, ", from ", NetAddrString(raddr))
+			//log.Println("[udp] recv msg size: ", nret, ", from ", NetAddrString(raddr))
 			u.recvCount += nret
 			sendChan <- NewHubMessage(buf[0:nret], raddr, nil, u.chanRecv)
 		} else {
@@ -90,7 +90,7 @@ func (u *UdpServer) writing() {
 				if nb, err := u.conn.WriteTo(umsg.data, umsg.to); err != nil {
 					log.Println("[udp] send err:", err, nb)
 				} else {
-					log.Println("[udp] send size:", nb)
+					//log.Println("[udp] send size:", nb)
 					u.sendCount += nb
 				}
 			} else {

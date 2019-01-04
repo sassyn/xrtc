@@ -167,6 +167,7 @@ type MediaAttr struct {
 	sctp             *SctpInfo         // a=sctpmap: or a=sctp-port:
 	max_message_size int               // a=max-message-size:
 	candidates       []string          // a=candidate:
+	maxptime         int
 
 	// for anwser
 	av_rtpmaps   map[string]*RtpMapInfo
@@ -449,6 +450,8 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 		media.max_message_size = Atoi(fields[1])
 	} else if akey == "candidate" {
 		media.candidates = append(media.candidates, string(line))
+	} else if akey == "maxptime" {
+		media.maxptime = Atoi(fields[1])
 	} else {
 		log.Println("[sdp] unsupported attr=", akey)
 	}
