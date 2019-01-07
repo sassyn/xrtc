@@ -39,9 +39,7 @@ var gConfig *Config
 
 /// module init
 func init() {
-	log.SetLevel(log.DebugLevel)
-	log.SetDefaultFlags()
-	log.SetDefaultTag()
+	log.SetDefault()
 }
 
 /// load config
