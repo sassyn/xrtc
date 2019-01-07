@@ -1,0 +1,18 @@
+version: '2'
+
+services:
+  xrtc-proxy:
+    image: peterxu/docker-xrtc:cross
+    container_name: xrtc-proxy
+    stdin_open: true
+    tty: true
+    ports:
+      - 6000:6000/udp
+      - 6080:6080
+      - 6443:6443
+    network_mode: default
+    extra_hosts:
+      - "janus_api:${janus_api}"
+      - "ums_api:${ums_api}"
+    #external_links:
+    #  - janus-gateway:janus_api

@@ -5,25 +5,17 @@ FROM centos:7
 MAINTAINER Peter Xu <peter@uskee.org>
 
 # environments
-COPY CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo
-COPY epel.repo /etc/yum.repos.d/epel.repo
-COPY docker-ce.repo /etc/yum.repos.d/docker-ce.repo
-
-# install base
 RUN yum install -y libuuid libffi
 RUN yum install -y glib2 openssl gnutls
 RUN yum install -y net-tools
-RUN yum install -y openssl-devel gnutls-devel
-RUN yum install -y glib2-devel
-#RUN yum clean all
-
-# install golang
-RUN yum install -y golang
 RUN yum clean all
 
-ADD lib/ /usr/local/lib/
-ADD include/ /usr/local/include/
 
-ADD entrypoint.sh /entrypoint.sh
+COPY testing/routes.yml /tmp/etc/routes.yml
+ADD xrtc /usr/bin/xrtc
+
+EXPOSE 6000/udp 6080/tcp 6443/tcp
+
+ADD testing/entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["sleep", "30"]
+CMD ["/usr/bin/xrtc"]
