@@ -7,7 +7,8 @@ services:
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
         http:
-            max_conns:              4
+            root: /opt/janus/share/janus
+            max_conns:              100
             dial_timeout:           10s
             response_timeout:       10s
             keepalive_timeout:      120s

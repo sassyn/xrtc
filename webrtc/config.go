@@ -116,7 +116,7 @@ func (c *Config) Load(fname string) bool {
 			tcpsvr := NewTCPConfig(key)
 			tcpsvr.Net.Load(netp, "tcp")
 			enableHttp := IsYamlString(server.Key("enable_http"))
-			log.Println("[config] check tcp's enable_http=", enableHttp)
+			//log.Println("[config] check tcp's enable_http=", enableHttp)
 			tcpsvr.EnableHttp = (enableHttp == "true")
 			if tcpsvr.EnableHttp {
 				if httpp, err := IsYamlMap(server.Key("http")); err == nil {
@@ -259,9 +259,7 @@ type HttpParams struct {
 	ProtoRoutes map[string]string // ws@,..
 	Hijacks     map[string]string
 
-	NoRouteStatus int
-	NoRouteHTML   string
-
+	Root                  string        // static root dir
 	MaxConns              int           // max idle conns
 	IdleConnTimeout       time.Duration // the maximum amount of time an idle conn (keep-alive) connection
 	DialTimeout           time.Duration // the maximum amount of time a dial completes, system has around 3min
@@ -286,19 +284,25 @@ type STSHeader struct {
 }
 
 func (h *HttpParams) Load(node yaml.Map) {
+	h.Root = IsYamlString(node.Key("root"))
+	if len(h.Root) == 0 {
+		h.Root = "/tmp"
+	}
+
 	if routes, err := IsYamlList(node.Key("routes")); err == nil {
 		h.loadHttpRoutes(routes)
 	}
 	if hijacks, err := IsYamlList(node.Key("hijacks")); err == nil {
 		h.loadHttpHijacks(hijacks)
 	}
+	log.Println("[config] http:", h)
 }
 func (h *HttpParams) loadHttpRoutes(node yaml.List) {
 	//log.Println("[config] load routes, ", node)
 	for _, r := range node {
 		if item, err := IsYamlMap(r); err == nil {
 			for k, v := range item {
-				log.Println("[config] route=", k, v)
+				//log.Println("[config] route=", k, v)
 				//log.Println(url.Parse(IsYamlString(v)))
 				if strings.HasPrefix(k, "host@") {
 					h.HostRoutes[k] = IsYamlString(v)
@@ -319,7 +323,7 @@ func (h *HttpParams) loadHttpHijacks(node yaml.List) {
 	for _, r := range node {
 		if item, err := IsYamlMap(r); err == nil {
 			for k, v := range item {
-				log.Println("[config] hijack=", k, v)
+				//log.Println("[config] hijack=", k, v)
 				h.Hijacks[k] = IsYamlString(v)
 			}
 		} else {

@@ -287,16 +287,10 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	t := p.Lookup(r)
 
 	if t == nil {
-		log.Warnln("[proxy] ServeHTTP, no route for path=", r.URL.Path)
-		status := p.Config.NoRouteStatus
-		if status < 100 || status > 999 {
-			status = http.StatusNotFound
-		}
-		w.WriteHeader(status)
-		html := p.Config.NoRouteHTML
-		if html != "" {
-			io.WriteString(w, html)
-		}
+		log.Println("[proxy] ServeFile, no route and static for path=", r.URL.Path, p.Config.Root)
+		rw := &responseWriter{w: w}
+		http.ServeFile(rw, r, p.Config.Root)
+		log.Println("[proxy] ServeFile, err=", rw.code)
 		return
 	}
 
@@ -427,6 +421,8 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
+	// Pass HttpParams object not by pointer
+	//  When http params changed, only applys to subsequent requests not old
 	return NewHTTPProxyHandle(*cfg, func(r *http.Request) *RouteTarget {
 		//log.Println("[http] route, req:", r.Header)
 		var routeUri string
