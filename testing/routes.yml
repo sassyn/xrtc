@@ -2,6 +2,7 @@ services:
     httpsvr1:
         proto: http
         net:
+            enable: true
             addr: :6443
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
@@ -13,18 +14,24 @@ services:
             flush_interval:         10ms
             global_flush_interval:  10ms
             hijacks:
+                - host@ums.zenvv.com: ums
                 - /board:   ums
-                - /janus:   janus
+                - host@ums.zenvv.com: janus
                 - ws@janus-protocol: janus
+                - /janus:   janus
             routes:
+                - host@ums.zenvv.com: http://ums_api
+                - /board:   http://ums_api
+                - host@janus.zenvv.com: http://janus_api:8088
+                - ws@janus-protocol:   ws://janus_api:8188
+                - /janus:   http://janus_api:8088
                 - /test:    http://127.0.0.1:8080
                 - /out:     http://127.0.0.1:8080
-                - /janus:   http://janus_api:8088
-                - ws@janus-protocol:   ws://janus_api:8188
 
     tcpsvr1:
         proto: tcp
         net:
+            enable: true
             addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
@@ -49,6 +56,7 @@ services:
     udpsvr1:
         proto: udp
         net:
+            enable: true
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key

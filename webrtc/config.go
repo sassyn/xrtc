@@ -152,6 +152,7 @@ func loadCandidateIP(node yaml.List, err error) []string {
 
 /// Net basic params
 type NetParams struct {
+	Enable     bool
 	Addr       string // "host:port"
 	TlsCrtFile string
 	TlsKeyFile string
@@ -159,11 +160,12 @@ type NetParams struct {
 }
 
 func (n *NetParams) Load(node yaml.Map, proto string) {
+	n.Enable = (IsYamlString(node.Key("enable")) == "true")
 	n.Addr = IsYamlString(node.Key("addr"))
 	n.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
 	n.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
 
-	for {
+	for n.Enable {
 		var port string
 		var err error
 		if _, port, err = net.SplitHostPort(n.Addr); err != nil {
@@ -209,6 +211,8 @@ type UDPConfig struct {
 func NewTCPConfig(name string) *TCPConfig {
 	cfg := &TCPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
+	cfg.Http.HostRoutes = make(map[string]string)
+	cfg.Http.ProtoRoutes = make(map[string]string)
 	cfg.Http.Hijacks = make(map[string]string)
 	return cfg
 }
@@ -224,6 +228,8 @@ type TCPConfig struct {
 func NewHTTPConfig(name string) *HTTPConfig {
 	cfg := &HTTPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
+	cfg.Http.HostRoutes = make(map[string]string)
+	cfg.Http.ProtoRoutes = make(map[string]string)
 	cfg.Http.Hijacks = make(map[string]string)
 	return cfg
 }
@@ -248,8 +254,10 @@ var kDefaultHttpParams = HttpParams{
 }
 
 type HttpParams struct {
-	Routes  []StringPair
-	Hijacks map[string]string
+	Routes      []StringPair
+	HostRoutes  map[string]string // host@
+	ProtoRoutes map[string]string // ws@,..
+	Hijacks     map[string]string
 
 	NoRouteStatus int
 	NoRouteHTML   string
@@ -292,7 +300,14 @@ func (h *HttpParams) loadHttpRoutes(node yaml.List) {
 			for k, v := range item {
 				log.Println("[config] route=", k, v)
 				//log.Println(url.Parse(IsYamlString(v)))
-				h.Routes = append(h.Routes, StringPair{k, IsYamlString(v)})
+				if strings.HasPrefix(k, "host@") {
+					h.HostRoutes[k] = IsYamlString(v)
+				} else if strings.HasPrefix(k, "ws@") {
+					h.ProtoRoutes[k] = IsYamlString(v)
+				} else {
+					// keep route in-order
+					h.Routes = append(h.Routes, StringPair{k, IsYamlString(v)})
+				}
 			}
 		} else {
 			log.Warnln("[config] invalid route:", r)

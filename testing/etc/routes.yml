@@ -2,6 +2,7 @@ services:
     httpsvr1:
         proto: http
         net:
+            enable: true
             addr: :6443
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
@@ -19,15 +20,20 @@ services:
             routes:
                 - /test:    http://127.0.0.1:8080
                 - /out:     http://127.0.0.1:8080
-                - /janus:   http://127.0.0.1:8088
-                - ws@janus-protocol:   ws://127.0.0.1:8188
+                - /janus:   http://janus_api:8088
+                - host@janus.zenvv.com: http://janus_api:8088
+                - host@ums.zenvv.com: http://janus_api:8088
+                - ws@janus-protocol:   ws://janus_api:8188
 
     tcpsvr1:
         proto: tcp
         net:
+            enable: true
             addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
+            ips:
+                - 101.132.177.1
         enable_http: true
         http:
             max_conns:              4
@@ -42,11 +48,12 @@ services:
             routes:
                 - /test:    http://127.0.0.1:8080
                 - /out:     http://127.0.0.1:8080
-                - /janus:   http://127.0.0.1:8088
+                - /janus:   http://janus_api:8088
 
     udpsvr1:
         proto: udp
         net:
+            enable: true
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key

@@ -425,3 +425,60 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return nil, nil, errNoHijacker
 }
+
+func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
+	return NewHTTPProxyHandle(*cfg, func(r *http.Request) *RouteTarget {
+		//log.Println("[http] route, req:", r.Header)
+		var routeUri string
+
+		for {
+			// check host@
+			host := "host@" + r.URL.Host
+			if r, ok := cfg.HostRoutes[host]; ok {
+				routeUri = r
+				break
+			}
+
+			// check ws@
+			if proto := r.Header.Get("Sec-Websocket-Protocol"); len(proto) > 0 {
+				proto = "ws@" + proto
+				if r, ok := cfg.ProtoRoutes[proto]; ok {
+					routeUri = r
+					break
+				}
+			}
+
+			// check common path: prefix-only
+			for _, item := range cfg.Routes {
+				if strings.HasPrefix(r.URL.Path, item.first) {
+					routeUri = item.second
+					break
+				}
+			}
+			break
+		}
+
+		// check routeUri is valid
+		uri, err := url.Parse(routeUri)
+		if err != nil {
+			log.Warnln("[proxy] invalid route uri=", routeUri)
+			return nil
+		}
+
+		// check hijack
+		var hijack string
+		for key, val := range cfg.Hijacks {
+			if strings.HasPrefix(routeUri, key) {
+				hijack = val
+				break
+			}
+		}
+
+		return &RouteTarget{
+			Service:       name,
+			Hijack:        hijack,
+			TLSSkipVerify: true,
+			URL:           uri,
+		}
+	})
+}

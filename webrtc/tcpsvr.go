@@ -3,13 +3,9 @@ package webrtc
 import (
 	"bytes"
 	"crypto/tls"
-	"net/url"
-	"strings"
-	"sync"
-	//"errors"
-	//"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
@@ -184,7 +180,7 @@ func (h *TcpHandler) Process() bool {
 	} else if bytes.Compare(prefix, kSslServerHello[0:prelen]) != 0 {
 		log.Println("[tcp] setup http/rawtcp handshake for", h.conn.RemoteAddr())
 		if checkHttpRequest(prefix) {
-			http.Serve(NewHttpListener(h.conn), h.newHTTPProxyHandler())
+			http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
 		} else {
 			h.ServeTCP()
 		}
@@ -214,7 +210,7 @@ func (h *TcpHandler) Process() bool {
 		log.Println("[tcp] setup tls (http/tcp) for", h.conn.RemoteAddr(), string(prefix))
 		h.conn = conn3
 		if checkHttpRequest(prefix) {
-			http.Serve(NewHttpListener(h.conn), h.newHTTPProxyHandler())
+			http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
 		} else {
 			h.ServeTCP()
 		}
@@ -222,27 +218,6 @@ func (h *TcpHandler) Process() bool {
 
 	log.Println("[tcp] success")
 	return true
-}
-
-func (h *TcpHandler) newHTTPProxyHandler() http.Handler {
-	return NewHTTPProxyHandle(h.svr.config.Http, func(r *http.Request) *RouteTarget {
-		if h.svr.config.Http.Routes != nil {
-			for _, item := range h.svr.config.Http.Routes {
-				uri, err := url.Parse(item.second)
-				if err != nil {
-					continue
-				}
-				if strings.HasPrefix(r.URL.Path, item.first) {
-					return &RouteTarget{
-						Service:       h.svr.config.Name,
-						TLSSkipVerify: true,
-						URL:           uri,
-					}
-				}
-			}
-		}
-		return nil
-	})
 }
 
 func (h *TcpHandler) ServeTCP() {

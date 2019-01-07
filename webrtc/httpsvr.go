@@ -6,8 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
@@ -145,47 +143,9 @@ func (h *HttpHandler) Process() bool {
 
 	// now it is plain conn for tcp/http
 	//log.Println("[http] setup http/https for", h.conn.RemoteAddr())
-	http.Serve(NewHttpListener(h.conn), h.newHTTPProxyHandler())
+	http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
 	//log.Println("[http] setup success")
 	return true
-}
-
-func (h *HttpHandler) newHTTPProxyHandler() http.Handler {
-	return NewHTTPProxyHandle(h.svr.config.Http, func(r *http.Request) *RouteTarget {
-		//log.Println("[http] route, req:", r.Header)
-		if h.svr.config.Http.Routes != nil {
-			routePath := r.Header.Get("Sec-Websocket-Protocol")
-			if len(routePath) > 0 {
-				routePath = "ws@" + routePath
-			} else {
-				routePath = r.URL.Path
-			}
-
-			var hijack string
-			for key, val := range h.svr.config.Http.Hijacks {
-				if strings.HasPrefix(routePath, key) {
-					hijack = val
-					break
-				}
-			}
-
-			for _, item := range h.svr.config.Http.Routes {
-				uri, err := url.Parse(item.second)
-				if err != nil {
-					continue
-				}
-				if strings.HasPrefix(routePath, item.first) {
-					return &RouteTarget{
-						Service:       h.svr.config.Name,
-						Hijack:        hijack,
-						TLSSkipVerify: true,
-						URL:           uri,
-					}
-				}
-			}
-		}
-		return nil
-	})
 }
 
 func NewHttpListener(c *NetConn) *HttpListener {
