@@ -217,7 +217,7 @@ func (m *MediaSdp) parseSdp(data []byte) bool {
 	for item := range lines {
 		line := []byte(lines[item])
 		if len(line) <= 2 || line[1] != '=' {
-			//log.Println("invalid sdp line: ", string(line))
+			//log.Warnln("invalid sdp line: ", string(line))
 			continue
 		}
 
@@ -301,7 +301,7 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 					m.group_bundles = append(m.group_bundles, attrs[1:]...)
 				}
 			default:
-				log.Println("[sdp] unsupported attr - a=group:", aval)
+				log.Warnln("[sdp] unsupported attr - a=group:", aval)
 			}
 		}
 		return
@@ -453,7 +453,7 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 	} else if akey == "maxptime" {
 		media.maxptime = Atoi(fields[1])
 	} else {
-		log.Println("[sdp] unsupported attr=", akey)
+		log.Warnln("[sdp] unsupported attr=", akey)
 	}
 }
 
@@ -488,7 +488,7 @@ func (m *MediaDesc) GetUfrag() string {
 	} else if mt == kMediaAudioVideo {
 		return m.Sdp.audios[0].ice_ufrag
 	} else {
-		log.Println("[desc] invalid media type = ", mt)
+		log.Warnln("[desc] invalid media type = ", mt)
 		return ""
 	}
 }
@@ -502,7 +502,7 @@ func (m *MediaDesc) GetPasswd() string {
 	} else if mt == kMediaAudioVideo {
 		return m.Sdp.audios[0].ice_pwd
 	} else {
-		log.Println("[desc] invalid media type = ", mt)
+		log.Warnln("[desc] invalid media type = ", mt)
 		return ""
 	}
 }
@@ -516,7 +516,7 @@ func (m *MediaDesc) GetCandidates() []string {
 	} else if mt == kMediaAudioVideo {
 		return m.Sdp.audios[0].candidates
 	} else {
-		log.Println("[desc] invalid media type = ", mt)
+		log.Warnln("[desc] invalid media type = ", mt)
 		return nil
 	}
 }

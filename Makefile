@@ -38,4 +38,5 @@ docker-mac:
 deploy-mac:
 	@export janus_api=$(JANUS_IP) && export ums_api=$(UMS_IP) && \
 	docker-compose -f testing/docker-compose.cross.yml up -d
+	@docker logs -f xrtc-proxy
 

@@ -129,7 +129,7 @@ func BytesToUint32(bytes []byte) uint32 {
 func ValueOrderChange(T interface{}, order binary.ByteOrder) interface{} {
 	bytes := ValueToBytes(T)
 	if bytes == nil {
-		log.Println("[util] invalid bytes in ValueOrderChange")
+		log.Warnln("[util] invalid bytes in ValueOrderChange")
 		return 0
 	}
 
@@ -140,7 +140,7 @@ func ValueOrderChange(T interface{}, order binary.ByteOrder) interface{} {
 	} else if len(bytes) == 8 {
 		return order.Uint64(bytes[0:])
 	} else {
-		log.Println("[util] invalid length in ValueOrderChange")
+		log.Warnln("[util] invalid length in ValueOrderChange")
 	}
 	return 0
 }
@@ -417,11 +417,11 @@ func LocalIP() (net.IP, error) {
 func LocalIPString() string {
 	ip, err := LocalIP()
 	if err != nil {
-		log.Print("[WARN] Error determining local ip address. ", err)
+		log.Warnln("[util] Error determining local ip address. ", err)
 		return ""
 	}
 	if ip == nil {
-		log.Print("[WARN] Could not determine local ip address")
+		log.Warnln("[util] Could not determine local ip address")
 		return ""
 	}
 	return ip.String()

@@ -96,7 +96,7 @@ func (c *Connection) onRecvData(data []byte) {
 			c.onRecvStunBindingRequest(msg.transId)
 		case STUN_BINDING_RESPONSE:
 			if c.hadStunBindingResponse {
-				log.Println("[conn] had stun binding response")
+				log.Warnln("[conn] had stun binding response")
 				return
 			}
 			log.Println("[conn] recv stun binding response")
@@ -115,7 +115,7 @@ func (c *Connection) onRecvData(data []byte) {
 
 func (c *Connection) onRecvStunBindingRequest(transId string) {
 	if c.leave {
-		log.Println("[conn] had left!")
+		log.Warnln("[conn] had left!")
 		return
 	}
 
@@ -131,7 +131,7 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 
 	var buf bytes.Buffer
 	if !resp.Write(&buf) {
-		log.Println("[conn] fail to gen stun response")
+		log.Warnln("[conn] fail to gen stun response")
 		return
 	}
 
@@ -171,7 +171,7 @@ func (c *Connection) sendStunBindingRequest() bool {
 		log.Println("[conn] send stun binding request, len=", buf.Len())
 		c.sendData(buf.Bytes())
 	} else {
-		log.Println("[conn] fail to get stun request bufffer")
+		log.Warnln("[conn] fail to get stun request bufffer")
 	}
 	return true
 }
@@ -199,7 +199,7 @@ func (c *Connection) checkStunBindingRequest() {
 				}
 
 				if delta := NowMs() - c.utime; delta >= (15 * 1000) {
-					log.Println("[conn] no response from client and quit")
+					log.Warnln("[conn] no response from client and quit")
 					return
 				} else if delta > (5 * 1000) {
 					log.Println("[conn] adjust stun request interval")

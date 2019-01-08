@@ -50,7 +50,7 @@ func (s *HttpServer) Run() {
 		// Wait for a connection.
 		conn, err := s.ln.Accept()
 		if err != nil {
-			log.Println("[http] accept error=", err)
+			log.Warnln("[http] accept error=", err)
 			return
 		}
 
@@ -107,7 +107,7 @@ func (h *HttpHandler) Process() bool {
 	//FIXME: how many bytes used here? (3bytes??)
 	if bytes.Compare(prefix, kSslClientHello[0:prelen]) == 0 {
 		if len(data) < kSslClientHelloLen {
-			log.Printf("[http] check ssl hello, len(%d) not enough < sslLen(%d)", len(data), kSslClientHelloLen)
+			log.Warnf("[http] check ssl hello, len(%d) not enough < sslLen(%d)", len(data), kSslClientHelloLen)
 			return false
 		}
 	}
@@ -125,7 +125,7 @@ func (h *HttpHandler) Process() bool {
 		log.Println("[http] setup tls key/cert for", h.conn.RemoteAddr())
 		cer, err := tls.LoadX509KeyPair(h.svr.GetSslFile())
 		if err != nil {
-			log.Printf("[http] load tls key/cert err: %v", err)
+			log.Warnf("[http] load tls key/cert err: %v", err)
 			return false
 		}
 
@@ -133,7 +133,7 @@ func (h *HttpHandler) Process() bool {
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 		conn2 := tls.Server(h.conn, config)
 		if err := conn2.Handshake(); err != nil {
-			log.Printf("[http] check tls handshake err: %v", err)
+			log.Warnf("[http] check tls handshake err: %v", err)
 			return false
 		}
 

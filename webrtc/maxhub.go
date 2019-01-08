@@ -65,7 +65,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 	if misc.action == WebrtcActionOffer {
 		var desc MediaDesc
 		if !desc.Parse(msg.data) {
-			log.Println("[maxhub] invalid offer")
+			log.Warnln("[maxhub] invalid offer")
 			return
 		}
 		ufrag := desc.GetUfrag() + "_offer"
@@ -74,14 +74,14 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 	} else if misc.action == WebrtcActionAnswer {
 		var desc MediaDesc
 		if !desc.Parse(msg.data) {
-			log.Println("[maxhub] invalid answer")
+			log.Warnln("[maxhub] invalid answer")
 			return
 		}
 		ufrag := desc.GetUfrag() + "_answer"
 		log.Println("[maxhub] inner answer ufrag: ", ufrag)
 		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
 	} else {
-		log.Println("[maxhub] invalid admin action=", misc.action)
+		log.Warnln("[maxhub] invalid admin action=", misc.action)
 	}
 }
 
@@ -96,7 +96,7 @@ func (h *MaxHub) findConnection(addr net.Addr) *Connection {
 func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc interface{}) {
 	var msg IceMessage
 	if !msg.Read(data) {
-		log.Println("[maxhub] invalid stun message")
+		log.Warnln("[maxhub] invalid stun message")
 		return
 	}
 
@@ -105,14 +105,14 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 	case STUN_BINDING_REQUEST:
 		attr := msg.GetAttribute(STUN_ATTR_USERNAME)
 		if attr == nil {
-			log.Println("[maxhub] no stun attr of username")
+			log.Warnln("[maxhub] no stun attr of username")
 			return
 		}
 
 		stunName := string(attr.(*StunByteStringAttribute).data)
 		items := strings.Split(stunName, ":")
 		if len(items) != 2 {
-			log.Println("[maxhub] invalid stun name:", stunName)
+			log.Warnln("[maxhub] invalid stun name:", stunName)
 			return
 		}
 
@@ -130,13 +130,13 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 				answer = string(item.data.([]byte))
 			}
 			if len(offer) <= 10 || len(answer) <= 10 {
-				log.Println("[maxhub] invalid offer, answer", len(offer), len(answer))
+				log.Warnln("[maxhub] invalid offer, answer", len(offer), len(answer))
 				return
 			}
 
 			user = NewUser()
 			if !user.setOfferAnswer(offer, answer) {
-				log.Println("[maxhub] invalid offer/answer for user")
+				log.Warnln("[maxhub] invalid offer/answer for user")
 				return
 			}
 			h.clients[stunName] = user
@@ -154,10 +154,10 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 
 			conn.onRecvStunBindingRequest(msg.transId)
 		} else {
-			log.Println("[maxhub] no chanSend for this connection")
+			log.Warnln("[maxhub] no chanSend for this connection")
 		}
 	default:
-		log.Println("[maxhub] invalid stun type =", msg.dtype)
+		log.Warnln("[maxhub] invalid stun type =", msg.dtype)
 	}
 }
 
@@ -206,7 +206,7 @@ func (h *MaxHub) OnRecvFromOuter(msg *HubMessage) {
 		if IsStunPacket(msg.data) {
 			h.handleStunBindingRequest(msg.data, msg.from, msg.misc)
 		} else {
-			log.Println("[maxhub] invalid data from outer")
+			log.Warnln("[maxhub] invalid data from outer")
 		}
 	}
 }

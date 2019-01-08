@@ -66,7 +66,7 @@ func (u *UdpServer) Run() {
 			u.recvCount += nret
 			sendChan <- NewHubMessage(buf[0:nret], raddr, nil, u.chanRecv)
 		} else {
-			log.Println("[udp] read udp error: ", err, ", remote: ", raddr)
+			log.Warnln("[udp] read udp error: ", err, ", remote: ", raddr)
 			break
 		}
 	}
@@ -88,13 +88,13 @@ func (u *UdpServer) writing() {
 
 			if umsg, ok := msg.(*HubMessage); ok {
 				if nb, err := u.conn.WriteTo(umsg.data, umsg.to); err != nil {
-					log.Println("[udp] send err:", err, nb)
+					log.Warnln("[udp] send err:", err, nb)
 				} else {
 					//log.Println("[udp] send size:", nb)
 					u.sendCount += nb
 				}
 			} else {
-				log.Println("[udp] not-send invalid msg")
+				log.Warnln("[udp] not-send invalid msg")
 			}
 		case <-tickChan:
 			//log.Printf("[udp] statistics, sendCount=%d, recvCount=%d\n", u.sendCount, u.recvCount)

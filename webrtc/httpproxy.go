@@ -38,7 +38,7 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 	var err error
 
 	if body, err = readHTTPBody(httpBody); err != nil {
-		log.Println("invalid http body, err=", err)
+		//log.Warnln("[proxy] http invalid body, err=", err)
 		return nil, err
 	}
 
@@ -64,7 +64,8 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 
 func procWebrtcRequest(hijack string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
-	if hijack == "ums" {
+	switch hijack {
+	case "ums":
 		if jreq, err := ParseUmsRequest(body); err == nil {
 			offer := []byte(jreq.GetOffer())
 			//log.Println("[proxy] ums-request offer: ", len(offer))
@@ -72,7 +73,7 @@ func procWebrtcRequest(hijack string, body []byte) []byte {
 		} else {
 			log.Warnln("[proxy] ums-resquest error:", err)
 		}
-	} else if hijack == "janus" {
+	case "janus":
 		if jreq, err := ParseJanusRequest(body); err == nil {
 			if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
 				offer := []byte(jreq.Jsep.Sdp)
@@ -85,13 +86,16 @@ func procWebrtcRequest(hijack string, body []byte) []byte {
 		} else {
 			log.Warnln("[proxy] janus-request error:", err, string(body))
 		}
+	default:
+		// nop
 	}
 	return nil
 }
 
 func procWebrtcResponse(hijack string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
-	if hijack == "ums" {
+	switch hijack {
+	case "ums":
 		if jresp, err := ParseUmsResponse(body); err == nil {
 			answer := []byte(jresp.GetAnswer())
 			//log.Println("[proxy] ums-response answer: ", len(answer))
@@ -99,7 +103,7 @@ func procWebrtcResponse(hijack string, body []byte) []byte {
 		} else {
 			log.Warnln("[proxy] ums-response error:", err)
 		}
-	} else if hijack == "janus" {
+	case "janus":
 		if jresp, err := ParseJanusResponse(body); err == nil {
 			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
 				answer := []byte(jresp.Jsep.Sdp)
@@ -116,6 +120,8 @@ func procWebrtcResponse(hijack string, body []byte) []byte {
 		} else {
 			log.Warnln("[proxy] janus-response error:", err, string(body))
 		}
+	default:
+		// nop
 	}
 	return nil
 }
@@ -150,7 +156,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 			encoding := req.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(req.Body, encoding)
 			if body == nil || err != nil {
-				log.Println("[proxy] invalid reqeust body, err=", err)
+				log.Println("[proxy] http invalid reqeust body, err=", err)
 				return
 			}
 
@@ -177,7 +183,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 			encoding := resp.Request.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(resp.Body, encoding)
 			if body == nil || err != nil {
-				log.Println("[proxy] invalid response body, err:", err)
+				log.Warnln("[proxy] invalid response body, err:", err)
 				return nil
 			}
 
@@ -285,6 +291,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := p.Lookup(r)
+	//log.Println("[proxy] route lookup=", t)
 
 	if t == nil {
 		log.Println("[proxy] ServeFile, no route and static for path=", r.URL.Path, p.Config.Root)
@@ -424,20 +431,24 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 	// Pass HttpParams object not by pointer
 	//  When http params changed, only applys to subsequent requests not old
 	return NewHTTPProxyHandle(*cfg, func(r *http.Request) *RouteTarget {
-		//log.Println("[http] route, req:", r.Header)
+		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
 		var routeUri string
 
 		for {
 			// check host@
-			host := "host@" + r.URL.Host
-			if r, ok := cfg.HostRoutes[host]; ok {
-				routeUri = r
-				break
+			if host, _, err := net.SplitHostPort(r.Host); err == nil {
+				host = "host@" + host
+				//log.Println("[proxy] route check host=", host)
+				if r, ok := cfg.HostRoutes[host]; ok {
+					routeUri = r
+					break
+				}
 			}
 
 			// check ws@
 			if proto := r.Header.Get("Sec-Websocket-Protocol"); len(proto) > 0 {
 				proto = "ws@" + proto
+				//log.Println("[proxy] route check proto=", proto)
 				if r, ok := cfg.ProtoRoutes[proto]; ok {
 					routeUri = r
 					break
@@ -446,6 +457,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 
 			// check common path: prefix-only
 			for _, item := range cfg.Routes {
+				//log.Println("[proxy] route check path,", item, r.URL.Path)
 				if strings.HasPrefix(r.URL.Path, item.first) {
 					routeUri = item.second
 					break
@@ -454,10 +466,14 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			break
 		}
 
+		if len(routeUri) <= 1 {
+			return nil
+		}
+
 		// check routeUri is valid
 		uri, err := url.Parse(routeUri)
 		if err != nil {
-			log.Warnln("[proxy] invalid route uri=", routeUri)
+			log.Warnln("[proxy] route invalid uri=", routeUri)
 			return nil
 		}
 

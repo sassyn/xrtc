@@ -7,7 +7,7 @@ services:
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
         http:
-            root: /opt/janus/share/janus
+            root: /tmp/html
             max_conns:              100
             dial_timeout:           10s
             response_timeout:       10s
@@ -17,7 +17,7 @@ services:
             hijacks:
                 - host@ums.zenvv.com: ums
                 - /board:   ums
-                - host@ums.zenvv.com: janus
+                - host@janus.zenvv.com: janus
                 - ws@janus-protocol: janus
                 - /janus:   janus
             routes:

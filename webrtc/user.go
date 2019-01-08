@@ -41,7 +41,7 @@ func (u *User) setOfferAnswer(offer, answer string) bool {
 		u.offer = offer
 		log.Println("[user] recv ice from offer: ", u.recvUfrag, u.recvPasswd)
 	} else {
-		log.Println("[user] invalid offer")
+		log.Warnln("[user] invalid offer")
 		return false
 	}
 
@@ -53,7 +53,7 @@ func (u *User) setOfferAnswer(offer, answer string) bool {
 		u.answer = answer
 		log.Println("[user] send ice from answer: ", u.sendUfrag, u.sendPasswd)
 	} else {
-		log.Println("[user] invalid answer")
+		log.Warnln("[user] invalid answer")
 		return false
 	}
 
@@ -87,7 +87,7 @@ func (u *User) addConnection(conn *Connection) {
 			u.activeConn = conn
 		}
 	} else {
-		log.Println("[user] no conn or addr")
+		log.Warnln("[user] no conn or addr")
 	}
 }
 
@@ -115,7 +115,7 @@ func (u *User) sendToOuter(data []byte) {
 	if u.activeConn != nil {
 		u.activeConn.sendData(data)
 	} else {
-		log.Println("[user] no active connection")
+		log.Warnln("[user] no active connection")
 	}
 }
 

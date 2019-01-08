@@ -18,13 +18,13 @@ func (r *UmsRequestJson) GetOffer() string {
 	log.Println("[json] ums request type:", r.Type, ", session:", r.Action.SessionKey)
 	user_roster := r.Action.UserRoster
 	if user_roster == nil || len(user_roster) == 0 {
-		log.Println("[json] ums no user_roster in json")
+		log.Warnln("[json] ums no user_roster in json")
 		return ""
 	}
 
 	channels := user_roster[0].AudioStatus.Channels
 	if channels == nil || len(channels) == 0 {
-		log.Println("[json] ums no channels in json")
+		log.Warnln("[json] ums no channels in json")
 		return ""
 	}
 
@@ -42,13 +42,13 @@ func (r *UmsResponseJson) GetAnswer() string {
 	log.Println("[json] ums response code:", r.Code)
 	user_roster := r.Action.UserRoster
 	if user_roster == nil || len(user_roster) == 0 {
-		log.Println("[json] ums no user_roster in json")
+		log.Warnln("[json] ums no user_roster in json")
 		return ""
 	}
 
 	channels := user_roster[0].AudioStatus.Channels
 	if channels == nil || len(channels) == 0 {
-		log.Println("[json] ums no channels in json")
+		log.Warnln("[json] ums no channels in json")
 		return ""
 	}
 

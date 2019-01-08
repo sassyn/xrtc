@@ -68,7 +68,7 @@ func (s *Service) Start() {
 	if s.agent != nil {
 		go s.Run()
 	} else {
-		log.Println("[service] no valid agent")
+		log.Warnln("[service] no valid agent")
 	}
 }
 
@@ -137,7 +137,7 @@ func (s *Service) Run() {
 					log.Println("[service] agent ice state:", e.State)
 				}
 			} else {
-				log.Println("[service] unknown agent event:", e)
+				log.Warnln("[service] unknown agent event:", e)
 			}
 			continue
 		case d := <-s.agent.DataChannel:

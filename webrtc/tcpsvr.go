@@ -98,7 +98,7 @@ func (s *TcpServer) Run() {
 		// Wait for a connection.
 		conn, err := s.ln.Accept()
 		if err != nil {
-			log.Println("[tcp] accept error=", err)
+			log.Warnln("[tcp] accept error=", err)
 			return
 		}
 
@@ -111,7 +111,7 @@ func (s *TcpServer) Run() {
 			if max := 1 * time.Second; tempDelay > max {
 				tempDelay = max
 			}
-			log.Printf("[tcp] accept error: %v; retrying after %v", err, tempDelay)
+			log.Warnf("[tcp] accept error: %v; retrying after %v", err, tempDelay)
 			time.Sleep(tempDelay)
 			continue
 		}
@@ -158,7 +158,7 @@ func (h *TcpHandler) Run() {
 func (h *TcpHandler) Process() bool {
 	data, err := h.conn.Peek(kSslClientHelloLen)
 	if len(data) < 3 {
-		log.Printf("[tcp] no enough data, err: %v", err)
+		log.Warnf("[tcp] no enough data, err: %v", err)
 		return false
 	}
 
@@ -168,7 +168,7 @@ func (h *TcpHandler) Process() bool {
 	//FIXME: how many bytes used here? (3bytes??)
 	if bytes.Compare(prefix, kSslClientHello[0:prelen]) == 0 {
 		if len(data) < kSslClientHelloLen {
-			log.Printf("[tcp] check ssl hello, len(%d) not enough < sslLen(%d)", len(data), kSslClientHelloLen)
+			log.Warnf("[tcp] check ssl hello, len(%d) not enough < sslLen(%d)", len(data), kSslClientHelloLen)
 			return false
 		}
 	}
@@ -188,7 +188,7 @@ func (h *TcpHandler) Process() bool {
 		log.Println("[tcp] setup tls key/cert for", h.conn.RemoteAddr())
 		cer, err := tls.LoadX509KeyPair(h.svr.GetSslFile())
 		if err != nil {
-			log.Printf("[tcp] load tls key/cert err: %v", err)
+			log.Warnf("[tcp] load tls key/cert err: %v", err)
 			return false
 		}
 
@@ -196,13 +196,13 @@ func (h *TcpHandler) Process() bool {
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 		conn2 := tls.Server(h.conn, config)
 		if err := conn2.Handshake(); err != nil {
-			log.Printf("[tcp] check tls handshake err: %v", err)
+			log.Warnf("[tcp] check tls handshake err: %v", err)
 			return false
 		}
 
 		conn3 := NewNetConn(conn2)
 		if prefix, err = conn3.Peek(3); err != nil {
-			log.Printf("[tcp] check tls read err: %v", err)
+			log.Warnf("[tcp] check tls read err: %v", err)
 			return false
 		}
 
@@ -237,7 +237,7 @@ loopTcpRead:
 	for !quit {
 		// read head(2bytes)
 		if nret, err := h.conn.Read(head[0:2]); err != nil {
-			log.Println("[tcp] tcp read head fail, err=", err)
+			log.Warnln("[tcp] tcp read head fail, err=", err)
 			break
 		} else {
 			h.recvCount += nret
@@ -290,7 +290,7 @@ func (h *TcpHandler) writing() {
 			if umsg, ok := msg.(*HubMessage); ok {
 				pktLen := len(umsg.data)
 				if pktLen > kMaxPacketSize {
-					log.Println("[tcp] tcp too much data, size=", pktLen)
+					log.Warnln("[tcp] tcp too much data, size=", pktLen)
 					continue
 				}
 
@@ -299,14 +299,14 @@ func (h *TcpHandler) writing() {
 				wbuf.Write(umsg.data)
 
 				if nb, err := h.conn.Write(wbuf.Bytes()); err != nil {
-					log.Println("[tcp] tcp send err:", err, nb)
+					log.Warnln("[tcp] tcp send err:", err, nb)
 					return
 				} else {
 					//log.Println("[tcp] tcp send size:", nb)
 					h.sendCount += nb
 				}
 			} else {
-				log.Println("[tcp] not-send invalid msg")
+				log.Warnln("[tcp] not-send invalid msg")
 			}
 		case <-tickChan:
 			log.Printf("[tcp] statistics, sendCount=%d, recvCount=%d\n", h.sendCount, h.recvCount)

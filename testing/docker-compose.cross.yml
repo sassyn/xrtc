@@ -11,6 +11,8 @@ services:
       - 6080:6080
       - 6443:6443
     network_mode: default
+    volumes:
+      - /tmp/html:/tmp/html
     extra_hosts:
       - "janus_api:${janus_api}"
       - "ums_api:${ums_api}"

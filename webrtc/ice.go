@@ -157,7 +157,7 @@ func (m *StunMessage) Read(data []byte) bool {
 	// 8-20, read stun transaction id
 	var transId [kStunTransactionIdLength]byte
 	if ret, err := buf.Read(transId[:]); err != nil || ret != kStunTransactionIdLength {
-		log.Println("[ice] invalid transid ret=", ret, ", err=", err)
+		log.Warnln("[ice] invalid transid ret=", ret, ", err=", err)
 		return false
 	}
 
@@ -172,7 +172,7 @@ func (m *StunMessage) Read(data []byte) bool {
 
 	if int(m.length) != buf.Len() {
 		// TODO: length= 80 , Len= 696
-		log.Println("[ice] invalid length=", m.length, ", Len=", buf.Len())
+		log.Warnln("[ice] invalid length=", m.length, ", Len=", buf.Len())
 		return false
 	}
 
@@ -182,7 +182,7 @@ func (m *StunMessage) Read(data []byte) bool {
 
 	for {
 		if buf.Len() < 4 {
-			//log.Println("[ice] no more data len=", buf.Len())
+			//log.Warnln("[ice] no more data len=", buf.Len())
 			break
 		}
 
@@ -251,7 +251,7 @@ func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 		WriteBig(buf, attr.GetLen2())
 		//log.Println("[ice] write, attrType, attrLen=", attr.GetType(), attr.GetLen2())
 		if !attr.Write(buf) {
-			log.Println("[ice] fail to write buf from stunmessage")
+			log.Warnln("[ice] fail to write buf from stunmessage")
 			return false
 		}
 	}
@@ -319,7 +319,7 @@ func (m *StunMessage) AddMessageIntegrity(key string) bool {
 
 	var buf bytes.Buffer
 	if !m.Write(&buf) {
-		log.Println("[ice] hmac buf is null")
+		log.Warnln("[ice] hmac buf is null")
 		return false
 	}
 
@@ -331,7 +331,7 @@ func (m *StunMessage) AddMessageIntegrity(key string) bool {
 	//log.Printf("[ice] hmac bufLen=%d, attrLen=%d, msglen=%d, digestlen=%d\n",
 	//	buf.Len(), attrLen, msg_len_for_hmac, len(digest))
 	if len(digest) != kStunMessageIntegritySize {
-		log.Println("[ice] hmac digest wrong, len=", len(digest))
+		log.Warnln("[ice] hmac digest wrong, len=", len(digest))
 		return false
 	}
 	//log.Println("[ice] hmac digest, len=", len(digest))
@@ -347,7 +347,7 @@ func (m *StunMessage) AddFingerprint() bool {
 
 	var buf bytes.Buffer
 	if !m.Write(&buf) {
-		log.Println("[ice] fail to AddFingerprint")
+		log.Warnln("[ice] fail to AddFingerprint")
 		return false
 	}
 
@@ -382,7 +382,7 @@ type StunAttributeBase struct {
 
 func (a *StunAttributeBase) Check(buf *bytes.Reader) bool {
 	if buf.Len() < int(a.attrLen) {
-		log.Println("[ice] no enough data, length=", buf.Len(), ", require len=", a.attrLen)
+		log.Warnln("[ice] no enough data, length=", buf.Len(), ", require len=", a.attrLen)
 		return false
 	}
 	return true
@@ -474,13 +474,13 @@ func (a *StunAddressAttribute) Read(buf *bytes.Reader) bool {
 	if a.family == STUN_ADDRESS_IPV4 {
 		a.ip = make([]byte, 4)
 		if ReadBig(buf, a.ip) != nil {
-			log.Println("[ice] read ipv4 failed")
+			log.Warnln("[ice] read ipv4 failed")
 			return false
 		}
 	} else if a.family == STUN_ADDRESS_IPV6 {
 		a.ip = make([]byte, 20)
 		if ReadBig(buf, a.ip) != nil {
-			log.Println("[ice] read ipv6 failed")
+			log.Warnln("[ice] read ipv6 failed")
 			return false
 		}
 	}
@@ -490,7 +490,7 @@ func (a *StunAddressAttribute) Read(buf *bytes.Reader) bool {
 
 func (a *StunAddressAttribute) Write(buf *bytes.Buffer) bool {
 	if a.family == STUN_ADDRESS_UNDEF {
-		log.Println("[ice] Error writing address attribute: unknown family.")
+		log.Warnln("[ice] Error writing address attribute: unknown family.")
 		return false
 	}
 	var zero uint8 = 0
@@ -508,7 +508,7 @@ func (a *StunAddressAttribute) SetAddr(addr net.Addr) {
 		a.SetIP(net.ParseIP(host))
 		a.SetPort(Atou16(port))
 	} else {
-		log.Println("[ice] fail to set addr:", strAddr)
+		log.Warnln("[ice] fail to set addr:", strAddr)
 	}
 }
 
@@ -551,7 +551,7 @@ func (a *StunXorAddressAttribute) Read(buf *bytes.Reader) bool {
 
 func (a *StunXorAddressAttribute) Write(buf *bytes.Buffer) bool {
 	if a.addr.family == STUN_ADDRESS_UNDEF {
-		log.Println("[ice] invalid addr family in xoraddr")
+		log.Warnln("[ice] invalid addr family in xoraddr")
 		return false
 	}
 	var zero uint8 = 0
@@ -608,14 +608,14 @@ func (a *StunByteStringAttribute) GetLen2() uint16 {
 
 func (a *StunByteStringAttribute) Read(buf *bytes.Reader) bool {
 	if !a.Check(buf) {
-		log.Println("[ice] invalid buf for StunByteStringAttribute")
+		log.Warnln("[ice] invalid buf for StunByteStringAttribute")
 		return false
 	}
 
 	a.data = make([]byte, a.attrLen)
 	if _, err := buf.Read(a.data); err != nil {
 		a.data = nil
-		log.Println("[ice] fail to read for StunByteStringAttribute")
+		log.Warnln("[ice] fail to read for StunByteStringAttribute")
 		return false
 	}
 	a.ConsumePadding(buf, int(a.attrLen))
