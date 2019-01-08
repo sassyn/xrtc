@@ -5,9 +5,9 @@ FROM centos:7
 MAINTAINER Peter Xu <peter@uskee.org>
 
 # environments
-COPY CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo
-COPY epel.repo /etc/yum.repos.d/epel.repo
-COPY docker-ce.repo /etc/yum.repos.d/docker-ce.repo
+COPY centos/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo
+COPY centos/epel.repo /etc/yum.repos.d/epel.repo
+COPY centos/docker-ce.repo /etc/yum.repos.d/docker-ce.repo
 
 # install base
 RUN yum install -y libuuid libffi
