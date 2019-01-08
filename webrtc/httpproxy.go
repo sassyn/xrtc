@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -295,8 +296,9 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if t == nil {
 		log.Println("[proxy] ServeFile, no route and static for path=", r.URL.Path, p.Config.Root)
+		fname := path.Join(p.Config.Root, r.URL.Path)
 		rw := &responseWriter{w: w}
-		http.ServeFile(rw, r, p.Config.Root)
+		http.ServeFile(rw, r, fname)
 		log.Println("[proxy] ServeFile, err=", rw.code)
 		return
 	}
