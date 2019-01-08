@@ -79,7 +79,7 @@ func TestIce() {
 }
 
 func TestYaml() {
-	var fname string = "./etc/routes.yml"
+	var fname string = "./routes.yml"
 	log.Println("[yaml] load file,", fname)
 	config := webrtc.NewConfig()
 	if !config.Load(fname) {
