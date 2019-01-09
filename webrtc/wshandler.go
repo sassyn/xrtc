@@ -100,7 +100,7 @@ func newWSHandler(hijack string, host string, dial dialFunc) http.Handler {
 							body = newdata
 						}
 					} else {
-						if newdata := procWebrtcResponse(hijack, body); newdata != nil {
+						if newdata := procWebrtcResponse(hijack, host, body); newdata != nil {
 							body = newdata
 						}
 					}

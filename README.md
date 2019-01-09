@@ -95,6 +95,7 @@ services:
       tls_key_file: /tmp/etc/cert.key
       ips:
         - host_ip
+    enable_http: true
     http:
       root: /tmp/html
       hijacks:

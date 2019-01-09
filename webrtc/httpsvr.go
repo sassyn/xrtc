@@ -123,7 +123,7 @@ func (h *HttpHandler) Process() bool {
 	}
 
 	if isSsl {
-		log.Println("[http] setup tls key/cert for", h.conn.RemoteAddr())
+		//log.Println("[http] setup tls key/cert for", h.conn.RemoteAddr())
 		cer, err := tls.LoadX509KeyPair(h.svr.GetSslFile())
 		if err != nil {
 			log.Warnf("[http] load tls key/cert err: %v", err)

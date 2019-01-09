@@ -6,6 +6,7 @@ import (
 )
 
 type User struct {
+	tag         string // this is hijack
 	connections map[string]*Connection
 	chanSend    chan interface{}
 	service     *Service
@@ -33,14 +34,14 @@ func (u *User) getKey() string {
 	return u.recvUfrag + ":" + u.sendUfrag
 }
 
-func (u *User) setOfferAnswer(offer, answer string) bool {
+func (u *User) setOfferAnswer(tag, host, offer, answer string) bool {
 	var desc1 util.MediaDesc
 	if desc1.Parse([]byte(offer)) {
 		// parsed from offer
 		u.recvUfrag = desc1.GetUfrag()
 		u.recvPasswd = desc1.GetPasswd()
 		u.offer = offer
-		log.Println("[user] recv ice from offer: ", u.recvUfrag, u.recvPasswd)
+		log.Println("[user] recv ice from offer:", u.recvUfrag, u.recvPasswd)
 	} else {
 		log.Warnln("[user] invalid offer")
 		return false
@@ -52,13 +53,14 @@ func (u *User) setOfferAnswer(offer, answer string) bool {
 		u.sendUfrag = desc2.GetUfrag()
 		u.sendPasswd = desc2.GetPasswd()
 		u.answer = answer
-		log.Println("[user] send ice from answer: ", u.sendUfrag, u.sendPasswd)
+		log.Println("[user] send ice from answer:", u.sendUfrag, u.sendPasswd)
 	} else {
 		log.Warnln("[user] invalid answer")
 		return false
 	}
 
-	u.startService(desc2.GetCandidates())
+	u.tag = tag
+	u.startService(host, desc2.GetCandidates())
 
 	return true
 }
@@ -137,15 +139,16 @@ func (u *User) dispose() {
 	}
 }
 
-func (u *User) startService(candidates []string) {
+func (u *User) startService(host string, candidates []string) {
 	if u.service != nil {
 		return
 	}
 
-	log.Println("[user] start service")
+	hostIp := util.LookupIP(host)
+	log.Println("[user] start service: ", hostIp)
 	sufrag, spwd := u.getRecvIce()
 	rufrag, rpwd := u.getSendIce()
-	remoteSdp := genServiceSdp("application", rufrag, rpwd, candidates)
+	remoteSdp := genServiceSdp(hostIp, rufrag, rpwd, candidates)
 	log.Println("[user] candidates=", candidates, remoteSdp)
 
 	log.Println("[user] init service, sendfragpwd=", sufrag, spwd, len(sufrag), len(spwd))

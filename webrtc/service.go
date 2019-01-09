@@ -1,6 +1,7 @@
 package webrtc
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -159,20 +160,20 @@ func (s *Service) Run() {
 	log.Println("[service] end")
 }
 
-func genServiceSdp(media, ufrag, pwd string, candidates []string) string {
-	const kDefaultUdpCandidate = "a=candidate:3159811271 1 udp 2113937151 119.254.195.20 5000 typ host"
-	const kDefaultTcpCandidate = "a=candidate:4074051639 1 tcp 1518280447 119.254.195.20 443 typ host tcptype passive"
+func genServiceSdp(hostIp, ufrag, pwd string, candidates []string) string {
+	const kDefaultUdpCandidate = "a=candidate:1 1 udp 2113937151 %s 5000 typ host"
+	const kDefaultTcpCandidate = "a=candidate:2 1 tcp 1518280447 %s 443 typ host tcptype passive"
 
 	var lines []string
-	lines = append(lines, "m="+media)
+	lines = append(lines, "m=application")
 	lines = append(lines, "c=IN IP4 0.0.0.0")
 	lines = append(lines, "a=ice-ufrag:"+ufrag)
 	lines = append(lines, "a=ice-pwd:"+pwd)
 	if candidates != nil && len(candidates) > 0 {
 		lines = append(lines, candidates...)
 	} else {
-		lines = append(lines, kDefaultUdpCandidate)
-		lines = append(lines, kDefaultTcpCandidate)
+		lines = append(lines, fmt.Sprintf(kDefaultUdpCandidate, hostIp))
+		lines = append(lines, fmt.Sprintf(kDefaultTcpCandidate, hostIp))
 	}
 	return strings.Join(lines, "\n")
 }

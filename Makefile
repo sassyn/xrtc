@@ -6,7 +6,7 @@ REPO = docker-xrtc
 JANUS_IP ?= "127.0.0.1"
 UMS_IP ?= "127.0.0.1"
 HTML_IP ?= "127.0.0.1"
-HOST_IP ?= "101.132.177.1"
+HOST_IP ?= "192.168.2.31"
 
 all: build
 
@@ -23,7 +23,7 @@ docker: build
 	docker build -t $(NS)/$(REPO):$(VERSION) -f testing/Dockerfile .
 
 deploy: 
-	docker-compose -f testing/docker-compose up -d
+	docker-compose -f testing/docker-compose.yml up -d
 
 docker-build:
 	@test "$(OS)" = "Linux"

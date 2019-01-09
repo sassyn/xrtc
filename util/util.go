@@ -426,3 +426,13 @@ func LocalIPString() string {
 	}
 	return ip.String()
 }
+
+func LookupIP(host string) string {
+	hostIp := host
+	if ips, err := net.LookupIP(host); err == nil {
+		if len(ips) > 0 {
+			hostIp = ips[0].String()
+		}
+	}
+	return hostIp
+}

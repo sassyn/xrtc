@@ -79,13 +79,13 @@ func procWebrtcRequest(hijack string, body []byte) []byte {
 	return nil
 }
 
-func procWebrtcResponse(hijack string, body []byte) []byte {
+func procWebrtcResponse(hijack, host string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
 
 	resp := &proto.ProtoResponse{hijack, body, Inst().Candidates()}
 	if ret, err := proto.Inst().ParseResponse(resp); err == nil {
 		if ret != nil {
-			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionAnswer, hijack)
+			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionAnswer, host)
 			return ret.Data
 		}
 	} else {
@@ -116,7 +116,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 
 			// TODO: process request body
 			if len(hijack) == 0 {
-				log.Warnln("[proxy] no hijack for path=", req.URL.Path)
+				//log.Warnln("[proxy] no hijack for path=", req.URL.Path)
 				return
 			}
 
@@ -143,7 +143,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 			}
 
 			if len(hijack) == 0 {
-				log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
+				//log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
 				return nil
 			}
 
@@ -155,7 +155,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 				return nil
 			}
 
-			if newdata := procWebrtcResponse(hijack, body); newdata != nil {
+			if newdata := procWebrtcResponse(hijack, target.Host, body); newdata != nil {
 				body = newdata
 			}
 

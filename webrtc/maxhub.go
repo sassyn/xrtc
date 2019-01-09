@@ -71,7 +71,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		}
 		ufrag := desc.GetUfrag() + "_offer"
 		log.Println("[maxhub] outer offer ufrag: ", ufrag)
-		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
+		h.cache.Set(ufrag, NewCacheItemEx(msg.data, misc.tag, 0))
 	} else if misc.action == WebrtcActionAnswer {
 		var desc util.MediaDesc
 		if !desc.Parse(msg.data) {
@@ -80,7 +80,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		}
 		ufrag := desc.GetUfrag() + "_answer"
 		log.Println("[maxhub] inner answer ufrag: ", ufrag)
-		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
+		h.cache.Set(ufrag, NewCacheItemEx(msg.data, misc.tag, 0))
 	} else {
 		log.Warnln("[maxhub] invalid admin action=", misc.action)
 	}
@@ -119,24 +119,26 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 
 		log.Println("[maxhub] stun name:", items)
 
-		var offer, answer string
+		var tag, host, offer, answer string
 		user, ok := h.clients[stunName]
 		if !ok {
 			answerUfrag := items[0] + "_answer"
 			offerUfrag := items[1] + "_offer"
 			if item := h.cache.Get(offerUfrag); item != nil {
 				offer = string(item.data.([]byte))
+				tag = string(item.misc.(string))
 			}
 			if item := h.cache.Get(answerUfrag); item != nil {
 				answer = string(item.data.([]byte))
+				host = string(item.misc.(string))
 			}
-			if len(offer) <= 10 || len(answer) <= 10 {
-				log.Warnln("[maxhub] invalid offer, answer", len(offer), len(answer))
+			if len(offer) <= 10 || len(answer) <= 10 || len(tag) < 2 || len(host) < 2 {
+				log.Warnln("[maxhub] invalid offer, answer", tag, host, len(offer), len(answer))
 				return
 			}
 
 			user = NewUser()
-			if !user.setOfferAnswer(offer, answer) {
+			if !user.setOfferAnswer(tag, host, offer, answer) {
 				log.Warnln("[maxhub] invalid offer/answer for user")
 				return
 			}

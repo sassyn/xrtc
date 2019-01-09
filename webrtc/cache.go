@@ -18,6 +18,7 @@ func NewCache() *Cache {
 
 type CacheItem struct {
 	data    interface{}
+	misc    interface{}
 	timeout uint32
 	ctime   uint32
 	utime   uint32
@@ -25,6 +26,10 @@ type CacheItem struct {
 
 func NewCacheItem(data interface{}, timeout uint32) *CacheItem {
 	return &CacheItem{data: data, timeout: timeout, ctime: util.NowMs(), utime: util.NowMs()}
+}
+
+func NewCacheItemEx(data interface{}, misc interface{}, timeout uint32) *CacheItem {
+	return &CacheItem{data: data, misc: misc, timeout: timeout, ctime: util.NowMs(), utime: util.NowMs()}
 }
 
 func (h *Cache) Get(key string) *CacheItem {
