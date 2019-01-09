@@ -6,6 +6,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type UdpServer struct {
@@ -27,7 +28,7 @@ func NewUdpServer(hub *MaxHub, cfg *UDPConfig) *UdpServer {
 	if udpAddr, err := net.ResolveUDPAddr("udp", addr); err == nil {
 		if conn, err := net.ListenUDP("udp", udpAddr); err == nil {
 			log.Println("[udp_server] listen udp on: ", addr)
-			SetSocketReuseAddr(conn)
+			util.SetSocketReuseAddr(conn)
 			return &UdpServer{
 				conn:     conn,
 				hub:      hub,

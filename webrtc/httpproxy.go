@@ -20,6 +20,7 @@ import (
 
 	gziph "github.com/PeterXu/xrtc/gzip"
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/proto"
 	uuid "github.com/PeterXu/xrtc/uuid"
 )
 
@@ -65,64 +66,30 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 
 func procWebrtcRequest(hijack string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
-	switch hijack {
-	case "ums":
-		if jreq, err := ParseUmsRequest(body); err == nil {
-			offer := []byte(jreq.GetOffer())
-			//log.Println("[proxy] ums-request offer: ", len(offer))
-			adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
-		} else {
-			log.Warnln("[proxy] ums-resquest error:", err)
+
+	req := &proto.ProtoRequest{hijack, body}
+	if ret, err := proto.Inst().ParseRequest(req); err == nil {
+		if ret != nil {
+			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionOffer, hijack)
+			return ret.Data
 		}
-	case "janus":
-		if jreq, err := ParseJanusRequest(body); err == nil {
-			if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
-				offer := []byte(jreq.Jsep.Sdp)
-				//log.Println("[proxy] janus-request offer:", len(offer), string(offer))
-				adminChan <- NewWebrtcAction(offer, WebrtcActionOffer, hijack)
-				// NOTE: donot required to update request
-			} else {
-				//log.Println("[proxy] janus-request:", jresp.Janus)
-			}
-		} else {
-			log.Warnln("[proxy] janus-request error:", err, string(body))
-		}
-	default:
-		// nop
+	} else {
+		log.Warnln("[proxy] resquest error:", hijack, err, string(body))
 	}
 	return nil
 }
 
 func procWebrtcResponse(hijack string, body []byte) []byte {
 	adminChan := Inst().ChanAdmin()
-	switch hijack {
-	case "ums":
-		if jresp, err := ParseUmsResponse(body); err == nil {
-			answer := []byte(jresp.GetAnswer())
-			//log.Println("[proxy] ums-response answer: ", len(answer))
-			adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
-		} else {
-			log.Warnln("[proxy] ums-response error:", err)
-		}
-	case "janus":
-		if jresp, err := ParseJanusResponse(body); err == nil {
-			if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
-				answer := []byte(jresp.Jsep.Sdp)
-				//log.Println("[proxy] janus-response answer: ", len(answer), string(answer))
-				adminChan <- NewWebrtcAction(answer, WebrtcActionAnswer, hijack)
 
-				jresp.Jsep.Sdp = string(ReplaceSdpCandidates(answer, Inst().Candidates()))
-				body = EncodeJanusResponse(jresp)
-				//log.Println("[proxy] janus-response answer2:", len(jresp.Jsep.Sdp), jresp.Jsep.Sdp)
-				return body
-			} else {
-				//log.Println("[proxy] janus-response:", jresp.Janus)
-			}
-		} else {
-			log.Warnln("[proxy] janus-response error:", err, string(body))
+	resp := &proto.ProtoResponse{hijack, body, Inst().Candidates()}
+	if ret, err := proto.Inst().ParseResponse(resp); err == nil {
+		if ret != nil {
+			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionAnswer, hijack)
+			return ret.Data
 		}
-	default:
-		// nop
+	} else {
+		log.Warnln("[proxy] response error:", hijack, err, string(body))
 	}
 	return nil
 }
@@ -434,6 +401,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 	//  When http params changed, only applys to subsequent requests not old
 	return NewHTTPProxyHandle(*cfg, func(r *http.Request) *RouteTarget {
 		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
+		var routePath string
 		var routeUri string
 
 		for {
@@ -442,6 +410,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 				host = "host@" + host
 				//log.Println("[proxy] route check host=", host)
 				if r, ok := cfg.HostRoutes[host]; ok {
+					routePath = host
 					routeUri = r
 					break
 				}
@@ -452,6 +421,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 				proto = "ws@" + proto
 				//log.Println("[proxy] route check proto=", proto)
 				if r, ok := cfg.ProtoRoutes[proto]; ok {
+					routePath = proto
 					routeUri = r
 					break
 				}
@@ -460,8 +430,9 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			// check common path: prefix-only
 			for _, item := range cfg.Routes {
 				//log.Println("[proxy] route check path,", item, r.URL.Path)
-				if strings.HasPrefix(r.URL.Path, item.first) {
-					routeUri = item.second
+				if strings.HasPrefix(r.URL.Path, item.First) {
+					routePath = r.URL.Path
+					routeUri = item.Second
 					break
 				}
 			}
@@ -482,7 +453,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 		// check hijack
 		var hijack string
 		for key, val := range cfg.Hijacks {
-			if strings.HasPrefix(routeUri, key) {
+			if strings.HasPrefix(routePath, key) {
 				hijack = val
 				break
 			}

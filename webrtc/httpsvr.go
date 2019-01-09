@@ -9,6 +9,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type HttpServer struct {
@@ -80,11 +81,11 @@ func (s *HttpServer) Exit() {
 
 type HttpHandler struct {
 	svr  *HttpServer
-	conn *NetConn
+	conn *util.NetConn
 }
 
 func NewHttpHandler(svr *HttpServer, conn net.Conn) *HttpHandler {
-	return &HttpHandler{svr: svr, conn: NewNetConn(conn)}
+	return &HttpHandler{svr: svr, conn: util.NewNetConn(conn)}
 }
 
 func (h *HttpHandler) Run() {
@@ -138,7 +139,7 @@ func (h *HttpHandler) Process() bool {
 		}
 
 		// set new conn(tls)
-		h.conn = NewNetConn(conn2)
+		h.conn = util.NewNetConn(conn2)
 	}
 
 	// now it is plain conn for tcp/http
@@ -148,12 +149,12 @@ func (h *HttpHandler) Process() bool {
 	return true
 }
 
-func NewHttpListener(c *NetConn) *HttpListener {
+func NewHttpListener(c *util.NetConn) *HttpListener {
 	return &HttpListener{c, false, false}
 }
 
 type HttpListener struct {
-	conn    *NetConn
+	conn    *util.NetConn
 	used    bool
 	closing bool
 }

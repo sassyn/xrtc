@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type Cache struct {
@@ -23,7 +24,7 @@ type CacheItem struct {
 }
 
 func NewCacheItem(data interface{}, timeout uint32) *CacheItem {
-	return &CacheItem{data: data, timeout: timeout, ctime: NowMs(), utime: NowMs()}
+	return &CacheItem{data: data, timeout: timeout, ctime: util.NowMs(), utime: util.NowMs()}
 }
 
 func (h *Cache) Get(key string) *CacheItem {
@@ -45,7 +46,7 @@ func (h *Cache) Update(key string) bool {
 	h.Lock()
 	defer h.Unlock()
 	if c, ok := h.items[key]; ok {
-		c.utime = NowMs()
+		c.utime = util.NowMs()
 		return true
 	}
 	return false
@@ -55,7 +56,7 @@ func (h *Cache) ClearTimeout() {
 	const kMaxTimeout = 600 * 1000    // ms
 	const kDefaultTimeout = 30 * 1000 // ms
 
-	nowTime := NowMs()
+	nowTime := util.NowMs()
 	var desperated []string
 	h.RLock()
 	for k, v := range h.items {

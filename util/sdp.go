@@ -1,4 +1,4 @@
-package webrtc
+package util
 
 import (
 	"strings"
@@ -326,8 +326,8 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 		} else if akey == "fingerprint" {
 			attrs := strings.SplitN(fields[1], " ", 2)
 			if len(attrs) == 2 {
-				m.fingerprint.first = attrs[0]
-				m.fingerprint.second = attrs[1]
+				m.fingerprint.First = attrs[0]
+				m.fingerprint.Second = attrs[1]
 			}
 			return
 		}
@@ -347,8 +347,8 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 	} else if akey == "fingerprint" {
 		attrs := strings.SplitN(fields[1], " ", 2)
 		if len(attrs) == 2 {
-			media.fingerprint.first = attrs[0]
-			media.fingerprint.second = attrs[1]
+			media.fingerprint.First = attrs[0]
+			media.fingerprint.Second = attrs[1]
 		}
 	} else if akey == "setup" {
 		media.setup = fields[1]
@@ -838,7 +838,7 @@ func (m *MediaDesc) AnswerSdp() string {
 	return strings.Join(sdp, "\n")
 }
 
-func ReplaceSdpCandidates(data []byte, candidates []string) []byte {
+func UpdateSdpCandidates(data []byte, candidates []string) []byte {
 	if len(candidates) == 0 {
 		return data
 	}
@@ -850,18 +850,38 @@ func ReplaceSdpCandidates(data []byte, candidates []string) []byte {
 		lines = strings.Split(string(data), "\n")
 	}
 
+	var newMline bool
+	var hadCandidate bool
 	var sdp []string
+
 	//log.Println("[sdp] replace candidates, sdp lines=", len(lines))
 	for _, line := range lines {
-		if strings.HasPrefix(line, "a=candidate:") {
-			// skip
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "m=") {
+			if newMline && !hadCandidate {
+				sdp = append(sdp, candidates...)
+				sdp = append(sdp, "a=end-of-candidates")
+			}
+			newMline = true
+			hadCandidate = false
+			sdp = append(sdp, line)
+		} else if strings.HasPrefix(line, "a=candidate:") {
+			// drop it
 		} else if strings.HasPrefix(line, "a=end-of-candidates") {
+			hadCandidate = true
 			sdp = append(sdp, candidates...)
 			sdp = append(sdp, line)
+		} else if len(line) > 2 {
+			sdp = append(sdp, line)
 		} else {
+			if newMline && !hadCandidate {
+				sdp = append(sdp, candidates...)
+				sdp = append(sdp, "a=end-of-candidates")
+			}
 			sdp = append(sdp, line)
 		}
 	}
+
 	return []byte(strings.Join(sdp, sp))
 }
 

@@ -1,4 +1,4 @@
-package webrtc
+package util
 
 import (
 	"bytes"
@@ -303,12 +303,12 @@ func CompareRtpSeq(seq1, seq2 uint16) int {
 /// StringPair like std::pair
 
 type StringPair struct {
-	first  string
-	second string
+	First  string
+	Second string
 }
 
 func (sp StringPair) ToStringBySpace() string {
-	return sp.first + " " + sp.second
+	return sp.First + " " + sp.Second
 }
 
 func NetAddrString(addr net.Addr) string {

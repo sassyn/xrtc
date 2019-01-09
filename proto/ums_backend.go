@@ -1,12 +1,49 @@
-package webrtc
+package proto
 
 import (
 	"encoding/json"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
-/// UMS Offer/Answer
+/// UMS proto
+
+func init() {
+	Inst().register("ums", &UmsProto{})
+}
+
+type UmsProto struct {
+}
+
+func (p *UmsProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
+	if jreq, err := ParseUmsRequest(req.Data); err == nil {
+		offer := []byte(jreq.GetOffer())
+		//log.Println("[proto] ums-request offer: ", len(offer))
+		return &ProtoResult{"offer", offer, nil}, nil
+	} else {
+		log.Warnln("[proto] ums-resquest error:", err)
+		return nil, err
+	}
+}
+
+func (p *UmsProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
+	if jresp, err := ParseUmsResponse(resp.Data); err == nil {
+		answer := []byte(jresp.GetAnswer())
+		//log.Println("[proto] ums-response answer: ", len(answer), string(answer))
+		// Generate new response data(http body)
+		answer2 := util.UpdateSdpCandidates(answer, resp.Candidates)
+		jresp.SetAnswer(string(answer2))
+		data := EncodeUmsResponse(jresp)
+		//log.Println("[proto] ums-response answer2:", len(answer2), string(answer2))
+		return &ProtoResult{"answer", answer, data}, nil
+	} else {
+		log.Warnln("[proto] ums-response error:", err)
+		return nil, err
+	}
+}
+
+/// UMS Offer/Answer json format
 
 func ParseUmsRequest(data []byte) (*UmsRequestJson, error) {
 	var jreq UmsRequestJson
@@ -38,6 +75,14 @@ func ParseUmsResponse(data []byte) (*UmsResponseJson, error) {
 	return &jreq, err
 }
 
+func EncodeUmsResponse(resp *UmsResponseJson) []byte {
+	if data, err := json.Marshal(resp); err == nil {
+		return data
+	} else {
+		return nil
+	}
+}
+
 func (r *UmsResponseJson) GetAnswer() string {
 	log.Println("[json] ums response code:", r.Code)
 	user_roster := r.Action.UserRoster
@@ -54,6 +99,22 @@ func (r *UmsResponseJson) GetAnswer() string {
 
 	webrtc_answer := channels[0].WebrtcAnswer
 	return webrtc_answer
+}
+
+func (r *UmsResponseJson) SetAnswer(data string) {
+	user_roster := r.Action.UserRoster
+	if user_roster == nil || len(user_roster) == 0 {
+		log.Warnln("[json] ums no user_roster in json")
+		return
+	}
+
+	channels := user_roster[0].AudioStatus.Channels
+	if channels == nil || len(channels) == 0 {
+		log.Warnln("[json] ums no channels in json")
+		return
+	}
+
+	channels[0].WebrtcAnswer = data
 }
 
 type UmsChannel struct {
@@ -86,65 +147,7 @@ type UmsRequestJson struct {
 }
 
 type UmsResponseJson struct {
-	Action UmsAction `json:"action"`
-	Code   string    `json:"code"`
-}
-
-/// Janus Offer/Answer/Candidate
-
-const kJanusMessage = "message" // offer
-const kJanusTrickle = "trickle" // candidate
-const kJanusEvent = "event"     // answer
-
-func ParseJanusRequest(data []byte) (*JanusRequestJson, error) {
-	var jreq JanusRequestJson
-	err := json.Unmarshal(data, &jreq)
-	return &jreq, err
-}
-
-type JanusRequestJson struct {
-	Janus       string          `json:"janus"`
-	Body        *JanusBody      `json:"body, omitempty"`
-	Transaction string          `json:"transaction"`
-	Jsep        *JanusJsep      `json:"jsep, omitempty"`
-	Candidate   *JanusCandidate `json:"candidate, omitempty"`
-}
-
-func ParseJanusResponse(data []byte) (*JanusResponseJson, error) {
-	var jresp JanusResponseJson
-	err := json.Unmarshal(data, &jresp)
-	return &jresp, err
-}
-
-func EncodeJanusResponse(resp *JanusResponseJson) []byte {
-	if data, err := json.Marshal(resp); err == nil {
-		return data
-	} else {
-		return nil
-	}
-}
-
-type JanusResponseJson struct {
-	Janus       string                 `json:"janus"`
-	SessionId   int                    `json:"session_id"`
-	Transaction string                 `json:"transaction"`
-	Sender      int64                  `json:"sender"`
-	Plugindata  map[string]interface{} `json:"plugindata"`
-	Jsep        *JanusJsep             `json:"jsep, omitempty"`
-}
-
-type JanusBody struct {
-	Audio bool `json:"audio"`
-	Video bool `json:"video"`
-}
-
-type JanusJsep struct {
-	Type string `json:"type"`
-	Sdp  string `json:"sdp"`
-}
-
-type JanusCandidate struct {
-	Candidate     string `json:"candidate"`
-	SdpMid        string `json:"sdpMid"`
-	SdpMLineIndex int    `json:"sdpMLineIndex"`
+	Action UmsAction              `json:"action"`
+	Code   string                 `json:"code"`
+	misc   map[string]interface{} `json:"-, omitempty"`
 }

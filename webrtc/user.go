@@ -2,6 +2,7 @@ package webrtc
 
 import (
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type User struct {
@@ -22,7 +23,7 @@ type User struct {
 }
 
 func NewUser() *User {
-	u := &User{utime: NowMs(), ctime: NowMs()}
+	u := &User{utime: util.NowMs(), ctime: util.NowMs()}
 	u.connections = make(map[string]*Connection)
 	u.chanSend = make(chan interface{}, 100)
 	return u
@@ -33,7 +34,7 @@ func (u *User) getKey() string {
 }
 
 func (u *User) setOfferAnswer(offer, answer string) bool {
-	var desc1 MediaDesc
+	var desc1 util.MediaDesc
 	if desc1.Parse([]byte(offer)) {
 		// parsed from offer
 		u.recvUfrag = desc1.GetUfrag()
@@ -45,7 +46,7 @@ func (u *User) setOfferAnswer(offer, answer string) bool {
 		return false
 	}
 
-	var desc2 MediaDesc
+	var desc2 util.MediaDesc
 	if desc2.Parse([]byte(answer)) {
 		// parsed from answer
 		u.sendUfrag = desc2.GetUfrag()
@@ -82,7 +83,7 @@ func (u *User) getAnswer() string {
 
 func (u *User) addConnection(conn *Connection) {
 	if conn != nil && conn.getAddr() != nil {
-		u.connections[NetAddrString(conn.getAddr())] = conn
+		u.connections[util.NetAddrString(conn.getAddr())] = conn
 		if u.activeConn == nil {
 			u.activeConn = conn
 		}
@@ -93,7 +94,7 @@ func (u *User) addConnection(conn *Connection) {
 
 func (u *User) delConnection(conn *Connection) {
 	if conn != nil {
-		delete(u.connections, NetAddrString(conn.getAddr()))
+		delete(u.connections, util.NetAddrString(conn.getAddr()))
 	}
 }
 

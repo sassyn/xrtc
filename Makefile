@@ -5,6 +5,8 @@ REPO = docker-xrtc
 
 JANUS_IP ?= "127.0.0.1"
 UMS_IP ?= "127.0.0.1"
+HTML_IP ?= "127.0.0.1"
+HOST_IP ?= "101.132.177.1"
 
 all: build
 
@@ -36,7 +38,8 @@ docker-mac:
 	@docker build -t $(NS)/$(REPO):cross -f testing/Dockerfile.cross .
 
 deploy-mac:
-	@export janus_api=$(JANUS_IP) && export ums_api=$(UMS_IP) && \
-	docker-compose -f testing/docker-compose.cross.yml up -d
+	@export janus_api=$(JANUS_IP) && export ums_api=$(UMS_IP) && export html_api=$(HTML_IP) && \
+		export host_ip=$(HOST_IP) && \
+		docker-compose -f testing/docker-compose.cross.yml up -d
 	@docker logs -f xrtc-proxy
 

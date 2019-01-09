@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type OneServer interface {
@@ -63,7 +64,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		return
 	}
 	if misc.action == WebrtcActionOffer {
-		var desc MediaDesc
+		var desc util.MediaDesc
 		if !desc.Parse(msg.data) {
 			log.Warnln("[maxhub] invalid offer")
 			return
@@ -72,7 +73,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 		log.Println("[maxhub] outer offer ufrag: ", ufrag)
 		h.cache.Set(ufrag, NewCacheItem(msg.data, 0))
 	} else if misc.action == WebrtcActionAnswer {
-		var desc MediaDesc
+		var desc util.MediaDesc
 		if !desc.Parse(msg.data) {
 			log.Warnln("[maxhub] invalid answer")
 			return
@@ -86,7 +87,7 @@ func (h *MaxHub) OnAdminData(msg *HubMessage) {
 }
 
 func (h *MaxHub) findConnection(addr net.Addr) *Connection {
-	var key string = NetAddrString(addr)
+	var key string = util.NetAddrString(addr)
 	if u, ok := h.connections[key]; ok {
 		return u
 	}
@@ -94,22 +95,22 @@ func (h *MaxHub) findConnection(addr net.Addr) *Connection {
 }
 
 func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc interface{}) {
-	var msg IceMessage
+	var msg util.IceMessage
 	if !msg.Read(data) {
 		log.Warnln("[maxhub] invalid stun message")
 		return
 	}
 
 	log.Println("[maxhub] proc stun message")
-	switch msg.dtype {
-	case STUN_BINDING_REQUEST:
-		attr := msg.GetAttribute(STUN_ATTR_USERNAME)
+	switch msg.Dtype {
+	case util.STUN_BINDING_REQUEST:
+		attr := msg.GetAttribute(util.STUN_ATTR_USERNAME)
 		if attr == nil {
 			log.Warnln("[maxhub] no stun attr of username")
 			return
 		}
 
-		stunName := string(attr.(*StunByteStringAttribute).data)
+		stunName := string(attr.(*util.StunByteStringAttribute).Data)
 		items := strings.Split(stunName, ":")
 		if len(items) != 2 {
 			log.Warnln("[maxhub] invalid stun name:", stunName)
@@ -150,14 +151,14 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 			conn.setUser(user)
 			// add conn into user
 			user.addConnection(conn)
-			h.connections[NetAddrString(addr)] = conn
+			h.connections[util.NetAddrString(addr)] = conn
 
-			conn.onRecvStunBindingRequest(msg.transId)
+			conn.onRecvStunBindingRequest(msg.TransId)
 		} else {
 			log.Warnln("[maxhub] no chanSend for this connection")
 		}
 	default:
-		log.Warnln("[maxhub] invalid stun type =", msg.dtype)
+		log.Warnln("[maxhub] invalid stun type =", msg.Dtype)
 	}
 }
 
@@ -203,7 +204,7 @@ func (h *MaxHub) OnRecvFromOuter(msg *HubMessage) {
 	if conn := h.findConnection(msg.from); conn != nil {
 		conn.onRecvData(msg.data)
 	} else {
-		if IsStunPacket(msg.data) {
+		if util.IsStunPacket(msg.data) {
 			h.handleStunBindingRequest(msg.data, msg.from, msg.misc)
 		} else {
 			log.Warnln("[maxhub] invalid data from outer")

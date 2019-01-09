@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/PeterXu/xrtc/util"
 	"log"
 )
 
@@ -561,7 +562,7 @@ func (ws *WsConn) ReadFrame(msg []byte) (n int, err error) {
 				return 0, err
 			}
 			errNum++
-			Sleep(5)
+			util.Sleep(5)
 			continue
 		}
 		pos += n

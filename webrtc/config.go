@@ -12,6 +12,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 	"github.com/PeterXu/xrtc/yaml"
 )
 
@@ -254,7 +255,7 @@ var kDefaultHttpParams = HttpParams{
 }
 
 type HttpParams struct {
-	Routes      []StringPair
+	Routes      []util.StringPair
 	HostRoutes  map[string]string // host@
 	ProtoRoutes map[string]string // ws@,..
 	Hijacks     map[string]string
@@ -310,7 +311,7 @@ func (h *HttpParams) loadHttpRoutes(node yaml.List) {
 					h.ProtoRoutes[k] = IsYamlString(v)
 				} else {
 					// keep route in-order
-					h.Routes = append(h.Routes, StringPair{k, IsYamlString(v)})
+					h.Routes = append(h.Routes, util.StringPair{k, IsYamlString(v)})
 				}
 			}
 		} else {

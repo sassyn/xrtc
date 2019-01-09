@@ -16,5 +16,7 @@ services:
     extra_hosts:
       - "janus_api:${janus_api}"
       - "ums_api:${ums_api}"
+      - "html_api:${html_api}"
+      - "host_ip:${host_ip}"
     #external_links:
     #  - janus-gateway:janus_api

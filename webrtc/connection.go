@@ -6,6 +6,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 const kDefaultConnectionTimeout = 30 * 1000 // ms
@@ -32,7 +33,7 @@ type Connection struct {
 }
 
 func NewConnection(addr net.Addr, chanSend chan interface{}) *Connection {
-	c := &Connection{addr: addr, chanSend: chanSend, utime: NowMs(), ctime: NowMs()}
+	c := &Connection{addr: addr, chanSend: chanSend, utime: util.NowMs(), ctime: util.NowMs()}
 	c.ready = false
 	c.hadStunChecking = false
 	c.hadStunBindingResponse = false
@@ -74,27 +75,27 @@ func (c *Connection) dispose() {
 }
 
 func (c *Connection) isTimeout() bool {
-	if NowMs() >= (c.utime + kDefaultConnectionTimeout) {
+	if util.NowMs() >= (c.utime + kDefaultConnectionTimeout) {
 		return true
 	}
 	return false
 }
 
 func (c *Connection) onRecvData(data []byte) {
-	c.utime = NowMs()
+	c.utime = util.NowMs()
 
-	if IsStunPacket(data) {
-		var msg IceMessage
+	if util.IsStunPacket(data) {
+		var msg util.IceMessage
 		if !msg.Read(data) {
 			// TODO: dtype= 1
-			log.Warnln("[conn] invalid stun message, dtype=", msg.dtype)
+			log.Warnln("[conn] invalid stun message, dtype=", msg.Dtype)
 			return
 		}
 
-		switch msg.dtype {
-		case STUN_BINDING_REQUEST:
-			c.onRecvStunBindingRequest(msg.transId)
-		case STUN_BINDING_RESPONSE:
+		switch msg.Dtype {
+		case util.STUN_BINDING_REQUEST:
+			c.onRecvStunBindingRequest(msg.TransId)
+		case util.STUN_BINDING_RESPONSE:
 			if c.hadStunBindingResponse {
 				log.Warnln("[conn] had stun binding response")
 				return
@@ -120,11 +121,11 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 	}
 
 	//log.Println("[conn] send stun binding response")
-	resp := &StunMessage{dtype: STUN_BINDING_RESPONSE, transId: transId}
+	resp := util.NewStunMessageResponse(transId)
 
-	xorAttr := &StunXorAddressAttribute{}
-	xorAttr.SetType(STUN_ATTR_XOR_MAPPED_ADDRESS)
-	xorAttr.addr.SetAddr(c.addr)
+	xorAttr := &util.StunXorAddressAttribute{}
+	xorAttr.SetType(util.STUN_ATTR_XOR_MAPPED_ADDRESS)
+	xorAttr.Addr.SetAddr(c.addr)
 	resp.AddAttribute(xorAttr)
 	resp.AddMessageIntegrity(c.sendPasswd)
 	resp.AddFingerprint()
@@ -155,13 +156,10 @@ func (c *Connection) sendStunBindingRequest() bool {
 	}
 
 	//log.Println("[conn] send stun binding request")
-	req := &StunMessage{
-		dtype:   STUN_BINDING_REQUEST,
-		transId: RandomString(kStunTransactionIdLength),
-	}
+	req := util.NewStunMessageRequest()
 
 	sendKey := c.recvUfrag + ":" + c.sendUfrag
-	usernameAttr := NewStunByteStringAttribute(STUN_ATTR_USERNAME, []byte(sendKey))
+	usernameAttr := util.NewStunByteStringAttribute(util.STUN_ATTR_USERNAME, []byte(sendKey))
 	req.AddAttribute(usernameAttr)
 	req.AddMessageIntegrity(c.recvPasswd)
 	req.AddFingerprint()
@@ -198,7 +196,7 @@ func (c *Connection) checkStunBindingRequest() {
 					return
 				}
 
-				if delta := NowMs() - c.utime; delta >= (15 * 1000) {
+				if delta := util.NowMs() - c.utime; delta >= (15 * 1000) {
 					log.Warnln("[conn] no response from client and quit")
 					return
 				} else if delta > (5 * 1000) {

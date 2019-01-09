@@ -1,4 +1,4 @@
-package webrtc
+package util
 
 import (
 	"bytes"
@@ -102,16 +102,30 @@ const (
 	STUN_FINGERPRINT_XOR_VALUE uint32 = 0x5354554E
 )
 
+func NewStunMessageRequest() *StunMessage {
+	return &StunMessage{
+		Dtype:   STUN_BINDING_REQUEST,
+		TransId: RandomString(kStunTransactionIdLength),
+	}
+}
+
+func NewStunMessageResponse(transId string) *StunMessage {
+	return &StunMessage{
+		Dtype:   STUN_BINDING_RESPONSE,
+		TransId: transId,
+	}
+}
+
 // Records a complete STUN/TURN message. Each message consists of a type and
 // any number of attributes. Each attribute is parsed into an instance of an
 // appropriate class (see above).  The Get* methods will return instances of
 // that attribute class.
 type StunMessage struct {
-	dtype   StunMessageType
-	length  uint16
-	magic   uint32
-	transId string
-	attrs   map[StunAttributeType]StunAttribute
+	Dtype   StunMessageType
+	Length  uint16
+	Magic   uint32
+	TransId string
+	Attrs   map[StunAttributeType]StunAttribute
 }
 
 type IceMessage struct {
@@ -135,24 +149,24 @@ func (m *StunMessage) Read(data []byte) bool {
 	buf := bytes.NewReader(data)
 
 	// 0-2, read stun message type
-	ReadBig(buf, &m.dtype)
-	//log.Println("[ice] message type=", m.dtype)
-	if (m.dtype & 0x8000) != 0 {
+	ReadBig(buf, &m.Dtype)
+	//log.Println("[ice] message type=", m.Dtype)
+	if (m.Dtype & 0x8000) != 0 {
 		// RTP and RTCP
-		log.Warnln("[ice] not stun message, (RTP/RTCP)type=", m.dtype)
+		log.Warnln("[ice] not stun message, (RTP/RTCP)type=", m.Dtype)
 		return false
 	}
 
 	// 2-4, read stun message size
-	ReadBig(buf, &m.length)
-	//log.Println("[ice] message length=", m.length)
-	if (m.length & 0x0003) != 0 {
-		log.Warnln("[ice] invalid message length=", m.length)
+	ReadBig(buf, &m.Length)
+	//log.Println("[ice] message length=", m.Length)
+	if (m.Length & 0x0003) != 0 {
+		log.Warnln("[ice] invalid message length=", m.Length)
 		return false
 	}
 
 	// 4-8, read stun magic
-	ReadBig(buf, &m.magic)
+	ReadBig(buf, &m.Magic)
 
 	// 8-20, read stun transaction id
 	var transId [kStunTransactionIdLength]byte
@@ -161,23 +175,23 @@ func (m *StunMessage) Read(data []byte) bool {
 		return false
 	}
 
-	if m.magic != kStunMagicCookie {
+	if m.Magic != kStunMagicCookie {
 		// If magic cookie is invalid it means that the peer implements
 		// RFC3489 instead of RFC5389.
-		m.transId = string(ValueToBytes(m.magic)[:]) + string(transId[:])
+		m.TransId = string(ValueToBytes(m.Magic)[:]) + string(transId[:])
 	} else {
-		m.transId = string(transId[:])
+		m.TransId = string(transId[:])
 	}
-	//log.Printf("[ice] message magic=%x, transId=%s\n", m.magic, m.transId)
+	//log.Printf("[ice] message magic=%x, transId=%s\n", m.Magic, m.TransId)
 
-	if int(m.length) != buf.Len() {
+	if int(m.Length) != buf.Len() {
 		// TODO: length= 80 , Len= 696
-		log.Warnln("[ice] invalid length=", m.length, ", Len=", buf.Len())
+		log.Warnln("[ice] invalid length=", m.Length, ", Len=", buf.Len())
 		return false
 	}
 
-	if m.attrs == nil {
-		m.attrs = make(map[StunAttributeType]StunAttribute)
+	if m.Attrs == nil {
+		m.Attrs = make(map[StunAttributeType]StunAttribute)
 	}
 
 	for {
@@ -217,9 +231,9 @@ func (m *StunMessage) Read(data []byte) bool {
 
 		// save attr
 		if attr != nil {
-			attr.SetInfo(attrType, attrLen, m.transId)
+			attr.SetInfo(attrType, attrLen, m.TransId)
 			attr.Read(buf)
-			m.attrs[attrType] = attr
+			m.Attrs[attrType] = attr
 		}
 	}
 
@@ -228,23 +242,23 @@ func (m *StunMessage) Read(data []byte) bool {
 
 func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 	// 0-2, stun type
-	WriteBig(buf, m.dtype)
+	WriteBig(buf, m.Dtype)
 	// 2-4, stun body length
-	WriteBig(buf, m.length)
+	WriteBig(buf, m.Length)
 	if !m.IsLegacy() {
 		// 4-8, stun magic
 		WriteBig(buf, kStunMagicCookie)
 	}
 	// 8-20, stun transId
-	buf.WriteString(m.transId)
+	buf.WriteString(m.TransId)
 	// head: 2+2+[4]+12
-	//log.Println("[ice] write stun headLen=", buf.Len(), ", bodyLen=", m.length)
+	//log.Println("[ice] write stun headLen=", buf.Len(), ", bodyLen=", m.Length)
 
-	// m.length: stun body
+	// m.Length: stun body
 	// STUN_ATTR_USERNAME: 2+2+username
 	// STUN_ATTR_MESSAGE_INTEGRITY: 2+2+20
 	// STUN_ATTR_FINGERPRINT: 2+2+4
-	for _, attr := range m.attrs {
+	for _, attr := range m.Attrs {
 		// 2bytes attr type
 		WriteBig(buf, attr.GetType())
 		// 2bytes attr len
@@ -259,7 +273,7 @@ func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 }
 
 func (m *StunMessage) IsLegacy() bool {
-	if len(m.transId) == kStunLegacyTransactionIdLength {
+	if len(m.TransId) == kStunLegacyTransactionIdLength {
 		return true
 	}
 	// kStunTransactionIdLength
@@ -267,14 +281,14 @@ func (m *StunMessage) IsLegacy() bool {
 }
 
 func (m *StunMessage) SetType(dtype StunMessageType) {
-	m.dtype = dtype
+	m.Dtype = dtype
 }
 
 func (m *StunMessage) SetTransactionID(transId string) bool {
 	if !m.IsValidTransactionId(transId) {
 		return false
 	}
-	m.transId = transId
+	m.TransId = transId
 	return true
 }
 
@@ -287,8 +301,8 @@ func (m *StunMessage) IsValidTransactionId(transId string) bool {
 }
 
 func (m *StunMessage) GetAttribute(atype StunAttributeType) StunAttribute {
-	if m.attrs != nil {
-		if attr, ok := m.attrs[atype]; ok {
+	if m.Attrs != nil {
+		if attr, ok := m.Attrs[atype]; ok {
 			return attr
 		}
 	}
@@ -296,15 +310,15 @@ func (m *StunMessage) GetAttribute(atype StunAttributeType) StunAttribute {
 }
 
 func (m *StunMessage) AddAttribute(attr StunAttribute) {
-	if m.attrs == nil {
-		m.attrs = make(map[StunAttributeType]StunAttribute)
+	if m.Attrs == nil {
+		m.Attrs = make(map[StunAttributeType]StunAttribute)
 	}
-	m.attrs[attr.GetType()] = attr
+	m.Attrs[attr.GetType()] = attr
 	attr_length := attr.GetLen2()
 	if (attr_length % 4) != 0 {
 		attr_length += (4 - (attr_length % 4))
 	}
-	m.length += (attr_length + 4)
+	m.Length += (attr_length + 4)
 }
 
 func (m *StunMessage) AddMessageIntegrity(key string) bool {
@@ -527,13 +541,13 @@ func (a *StunAddressAttribute) SetPort(port uint16) {
 
 type StunXorAddressAttribute struct {
 	StunAttributeBase
-	addr    StunAddressAttribute
-	xorIP   net.IP
-	xorPort uint16
+	Addr    StunAddressAttribute
+	XorIP   net.IP
+	XorPort uint16
 }
 
 func (a *StunXorAddressAttribute) GetLen2() uint16 {
-	if a.addr.family == STUN_ADDRESS_IPV4 {
+	if a.Addr.family == STUN_ADDRESS_IPV4 {
 		return 1 + 1 + 2 + 4
 	} else {
 		return 1 + 1 + 2 + 20
@@ -541,45 +555,45 @@ func (a *StunXorAddressAttribute) GetLen2() uint16 {
 }
 
 func (a *StunXorAddressAttribute) Read(buf *bytes.Reader) bool {
-	if !a.addr.Read(buf) {
+	if !a.Addr.Read(buf) {
 		return false
 	}
-	a.xorPort = a.addr.port ^ uint16(kStunMagicCookie>>16)
+	a.XorPort = a.Addr.port ^ uint16(kStunMagicCookie>>16)
 	a.GetXoredIP()
 	return true
 }
 
 func (a *StunXorAddressAttribute) Write(buf *bytes.Buffer) bool {
-	if a.addr.family == STUN_ADDRESS_UNDEF {
+	if a.Addr.family == STUN_ADDRESS_UNDEF {
 		log.Warnln("[ice] invalid addr family in xoraddr")
 		return false
 	}
 	var zero uint8 = 0
 	WriteBig(buf, zero)
-	WriteBig(buf, a.addr.family)
+	WriteBig(buf, a.Addr.family)
 
-	a.xorPort = a.addr.port ^ uint16(kStunMagicCookie>>16)
+	a.XorPort = a.Addr.port ^ uint16(kStunMagicCookie>>16)
 	a.GetXoredIP()
-	WriteBig(buf, a.xorPort)
-	WriteBig(buf, a.xorIP)
+	WriteBig(buf, a.XorPort)
+	WriteBig(buf, a.XorIP)
 	return true
 }
 
 func (a *StunXorAddressAttribute) GetXoredIP() {
 	magic := HostToNet32(kStunMagicCookie)
-	if a.addr.family == STUN_ADDRESS_IPV4 {
-		a.xorIP = make([]byte, 4)
-		dst := (*[1]uint32)(unsafe.Pointer(&a.xorIP[0]))[:]
-		ipv4 := (*[1]uint32)(unsafe.Pointer(&a.addr.ip[0]))[:]
+	if a.Addr.family == STUN_ADDRESS_IPV4 {
+		a.XorIP = make([]byte, 4)
+		dst := (*[1]uint32)(unsafe.Pointer(&a.XorIP[0]))[:]
+		ipv4 := (*[1]uint32)(unsafe.Pointer(&a.Addr.ip[0]))[:]
 		dst[0] = ipv4[0] ^ magic
-	} else if a.addr.family == STUN_ADDRESS_IPV6 {
-		a.xorIP = make([]byte, 20)
-		if len(a.addr.transId) == kStunTransactionIdLength {
+	} else if a.Addr.family == STUN_ADDRESS_IPV6 {
+		a.XorIP = make([]byte, 20)
+		if len(a.Addr.transId) == kStunTransactionIdLength {
 			var transIds [3]uint32
 			copy((*[12]byte)(unsafe.Pointer(&transIds[0]))[:], a.transId)
 
-			dst := (*[4]uint32)(unsafe.Pointer(&a.xorIP[0]))[:]
-			ipv6 := (*[4]uint32)(unsafe.Pointer(&a.addr.ip[0]))[:]
+			dst := (*[4]uint32)(unsafe.Pointer(&a.XorIP[0]))[:]
+			ipv6 := (*[4]uint32)(unsafe.Pointer(&a.Addr.ip[0]))[:]
 			dst[0] = ipv6[0] ^ magic
 			for i := 1; i < 4; i++ {
 				dst[i] = ipv6[i] ^ transIds[i-1]
@@ -590,7 +604,7 @@ func (a *StunXorAddressAttribute) GetXoredIP() {
 
 type StunByteStringAttribute struct {
 	StunAttributeBase
-	data []byte
+	Data []byte
 }
 
 func NewStunByteStringAttribute(attrType StunAttributeType, data []byte) *StunByteStringAttribute {
@@ -603,7 +617,7 @@ func NewStunByteStringAttribute(attrType StunAttributeType, data []byte) *StunBy
 }
 
 func (a *StunByteStringAttribute) GetLen2() uint16 {
-	return uint16(len(a.data))
+	return uint16(len(a.Data))
 }
 
 func (a *StunByteStringAttribute) Read(buf *bytes.Reader) bool {
@@ -612,9 +626,9 @@ func (a *StunByteStringAttribute) Read(buf *bytes.Reader) bool {
 		return false
 	}
 
-	a.data = make([]byte, a.attrLen)
-	if _, err := buf.Read(a.data); err != nil {
-		a.data = nil
+	a.Data = make([]byte, a.attrLen)
+	if _, err := buf.Read(a.Data); err != nil {
+		a.Data = nil
 		log.Warnln("[ice] fail to read for StunByteStringAttribute")
 		return false
 	}
@@ -623,16 +637,16 @@ func (a *StunByteStringAttribute) Read(buf *bytes.Reader) bool {
 }
 
 func (a *StunByteStringAttribute) Write(buf *bytes.Buffer) bool {
-	buf.Write(a.data)
-	a.WritePadding(buf, len(a.data))
+	buf.Write(a.Data)
+	a.WritePadding(buf, len(a.Data))
 	return true
 }
 
 func (a *StunByteStringAttribute) CopyBytes(data []byte) {
-	if len(a.data) != len(data) {
-		a.data = make([]byte, len(data))
+	if len(a.Data) != len(data) {
+		a.Data = make([]byte, len(data))
 	}
-	copy(a.data[0:], data)
+	copy(a.Data[0:], data)
 }
 
 type StunUInt32Attribute struct {

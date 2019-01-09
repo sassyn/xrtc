@@ -68,6 +68,7 @@ import (
 	"unsafe"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 const (
@@ -326,7 +327,7 @@ func (a *Agent) ParseSdp(sdp string) (int, error) {
 	defer C.free(unsafe.Pointer(s))
 	rv := C.nice_agent_parse_remote_sdp(a.agent, (*C.gchar)(s))
 	if rv < 0 {
-		return 0, errors.New("invalid remote sdp, ret=" + Itoa(int(rv)))
+		return 0, errors.New("invalid remote sdp, ret=" + util.Itoa(int(rv)))
 	}
 	return int(rv), nil
 }

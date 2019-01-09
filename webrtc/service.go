@@ -5,6 +5,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 type Service struct {
@@ -30,8 +31,8 @@ func NewService(user *User, chanRecv chan interface{}) *Service {
 		user:     user,
 		chanRecv: chanRecv,
 		exitTick: make(chan bool),
-		utime:    NowMs(),
-		ctime:    NowMs(),
+		utime:    util.NowMs(),
+		ctime:    util.NowMs(),
 	}
 	return s
 }

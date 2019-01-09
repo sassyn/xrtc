@@ -9,6 +9,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/util"
 )
 
 // default ssl crt/key
@@ -75,7 +76,7 @@ func NewTcpServer(hub *MaxHub, cfg *TCPConfig) *TcpServer {
 
 	if tcpL, ok := l.(*net.TCPListener); ok {
 		log.Println("[tcp] set reuse addr")
-		SetSocketReuseAddr(tcpL)
+		util.SetSocketReuseAddr(tcpL)
 	}
 	return &TcpServer{hub: hub, ln: l, config: cfg}
 }
@@ -131,7 +132,7 @@ const kMaxPacketSize = 64 * 1024
 
 type TcpHandler struct {
 	svr      *TcpServer
-	conn     *NetConn
+	conn     *util.NetConn
 	chanRecv chan interface{}
 
 	sendCount int
@@ -142,7 +143,7 @@ type TcpHandler struct {
 func NewTcpHandler(svr *TcpServer, conn net.Conn) *TcpHandler {
 	return &TcpHandler{
 		svr:      svr,
-		conn:     NewNetConn(conn),
+		conn:     util.NewNetConn(conn),
 		chanRecv: make(chan interface{}, 100),
 		exitTick: make(chan bool),
 	}
@@ -200,7 +201,7 @@ func (h *TcpHandler) Process() bool {
 			return false
 		}
 
-		conn3 := NewNetConn(conn2)
+		conn3 := util.NewNetConn(conn2)
 		if prefix, err = conn3.Peek(3); err != nil {
 			log.Warnf("[tcp] check tls read err: %v", err)
 			return false
@@ -248,7 +249,7 @@ loopTcpRead:
 		}
 
 		// body size
-		dsize := HostToNet16(BytesToUint16(head))
+		dsize := util.HostToNet16(util.BytesToUint16(head))
 		if dsize == 0 {
 			log.Warnln("[tcp] tcp invalid body")
 			continue
@@ -295,7 +296,7 @@ func (h *TcpHandler) writing() {
 				}
 
 				var wbuf bytes.Buffer
-				WriteBig(&wbuf, uint16(pktLen))
+				util.WriteBig(&wbuf, uint16(pktLen))
 				wbuf.Write(umsg.data)
 
 				if nb, err := h.conn.Write(wbuf.Bytes()); err != nil {
