@@ -2,24 +2,20 @@
 
 ***xRTC*** is an eXtendable WebRTC proxy, for REST-based WebRTC server.
 
-xRTC can serve many WebRTC clients on one ICE port at the same time.
+- [x] Serve many WebRTC clients on one ICE port at the same time.
+- [x] Serve as HTTP/WebSocket Reverse Proxy(`HTTP-RP`) .
+- [x] Serve HTTP/HTTPS/WS/WSS/ICE-TCP on one TCP port at the same time.
+- [x] Serve as HTTP static server.
+- [x] Serve as an extendable node of WebRTC server.
+- [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
 
-xRTC is a HTTP/Websocket Reverse Proxy(***HTTP-RP***).
-
-xRTC supports customed HTTP-RP routes.
-
-xRTC can serve HTTP/HTTPS/WS/WSS on one TCP port at the same time.
-
-xRTC can act as a HTTP static server.
-
-xRTC supports most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
 
 
 <br>
 
-## 0. Arch
+## 1. Cases
 
-### 0). Direct cases
+### 1). Direct cases
 
 ```
 WebRTC client A   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/Moxtra)
@@ -34,7 +30,7 @@ The WebRTC servers(Janus/Jitsi) need to use different ports for different client
 However, most servers only provide limited ports for security.
 
 
-### 1). xRTC cases
+### 2). xRTC cases
 
 ```
 WebRTC client A   <--HTTP-RP-->   xRTC(reverse porxy)   <--HTTP-RP-->  WebRTC server
@@ -44,10 +40,11 @@ WebRTC client A   <--ICE port0-->   xRTC  <--ICE port1-->  WebRTC server
 WebRTC client B   <--ICE port0-->   xRTC  <--ICE port2-->  WebRTC server
 ```
 
+The xRTC can use the same port (ICE-UDP/TCP) for different clients.
 
 <br>
 
-## 1. Principle
+## 2. Flow
 
 ```
 WebRTC client <---------------------->     xRTC    <--------------------> WebRTC server
@@ -78,11 +75,11 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 
 <br>
 
-## 2. Routes
+## 3. Routing
 
 The default routes config is [routes.yml](testing/routes.yml) (YAML format).
 
-The root node is `services` and its structure is:
+The root node is `services` and its structure:
 
 ```yaml
 services:
@@ -108,9 +105,9 @@ services:
         - /janus:               http://janus_api:8088
 ```
 
-Each service is a server, e.g. udp ice server, tcp ice server, http/ws reverse-proxy server.
+Each service is a server (servername), e.g. udp ice server, tcp ice server, http/ws reverse-proxy server.
 
-The meaning of server's fields:
+The server's fields contains:
 
 1. ***proto***: *http/tcp/udp*  
 	*http* is a HTTP static or HTTP-RP(http/ws reverse proxy) server,  
@@ -130,9 +127,9 @@ The meaning of server's fields:
 	
 	The `ips` is only valid for `proto: udp/tcp`, ICE candidates.
 
-	xRTC's candidates are constructed by `ips` and port of `addr`.
+	if `enable` is true, xRTC's candidates are constructed by `ips` and port of `addr`.
 	
-	if no valid tls key/crt, http(ws) enabled, or both http(ws) and https()wss enabled.
+	if no valid tls key/crt, http(ws) enabled, otherwise both http(ws) and https(wss) are enabled.
 	
 3. ***http***: HTTP server config
 	* ***root***: HTTP static directory for no-routing http request.
@@ -142,7 +139,7 @@ The meaning of server's fields:
 		* websocket protocol matching: "*ws@...*", e.g. `var ws = WebSocket("wss://..", "protocol_name");`
 		* path matching, now only support prefix-matching.
 
-4. ***enable_http***: *true/false*, only valid for **proto: tcp**.  
+4. ***enable_http***: *true/false*, only valid for `proto: tcp`.  
 	when *enable_http* is true and current service is a tcp server, then it can also act as a full HTTP-RP server. 
 
 
