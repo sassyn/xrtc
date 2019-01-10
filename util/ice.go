@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -13,9 +14,10 @@ import (
 	log "github.com/PeterXu/xrtc/logging"
 )
 
-// These are the types of STUN messages defined in RFC 5389.
+// StunMessageType 2-bytes
 type StunMessageType uint16
 
+// These are the types of STUN messages defined in RFC 5389.
 const (
 	STUN_BINDING_REQUEST        StunMessageType = 0x0001
 	STUN_BINDING_INDICATION                     = 0x0011
@@ -23,13 +25,14 @@ const (
 	STUN_BINDING_ERROR_RESPONSE                 = 0x0111
 )
 
+// StunAttributeType 2-bytes
+type StunAttributeType uint16
+
 // These are all known STUN attributes, defined in RFC 5389 and elsewhere.
 // Next to each is the name of the class (T is StunTAttribute) that implements
 // that type.
 // RETRANSMIT_COUNT is the number of outstanding pings without a response at
 // the time the packet is generated.
-type StunAttributeType uint16
-
 const (
 	STUN_ATTR_MAPPED_ADDRESS     StunAttributeType = 0x0001 // Address
 	STUN_ATTR_USERNAME                             = 0x0006 // ByteString
@@ -51,12 +54,13 @@ const (
 	STUN_ATTR_NETWORK_INFO    = 0xC057 // UInt32
 )
 
+// StunAttributeValueType 4bytes
+type StunAttributeValueType int
+
 // These are the types of the values associated with the attributes above.
 // This allows us to perform some basic validation when reading or adding
 // attributes. Note that these values are for our own use, and not defined in
 // RFC 5389.
-type StunAttributeValueType int
-
 const (
 	STUN_VALUE_UNKNOWN     StunAttributeValueType = iota
 	STUN_VALUE_ADDRESS                            = 1
@@ -68,9 +72,10 @@ const (
 	STUN_VALUE_UINT16_LIST                        = 7
 )
 
-// These are the types of STUN addresses defined in RFC 5389.
+// StunAddressFamily 1byte
 type StunAddressFamily uint8
 
+// These are the types of STUN addresses defined in RFC 5389.
 const (
 	// NB: UNDEF is not part of the STUN spec.
 	STUN_ADDRESS_UNDEF StunAddressFamily = 0
@@ -116,6 +121,7 @@ func NewStunMessageResponse(transId string) *StunMessage {
 	}
 }
 
+// StunMessage
 // Records a complete STUN/TURN message. Each message consists of a type and
 // any number of attributes. Each attribute is parsed into an instance of an
 // appropriate class (see above).  The Get* methods will return instances of
@@ -128,10 +134,13 @@ type StunMessage struct {
 	Attrs   map[StunAttributeType]StunAttribute
 }
 
+// IceMessage is A RFC 5245 ICE STUN message.
 type IceMessage struct {
 	StunMessage
 }
 
+// Read Parses the STUN packet in the given buffer and records it here. The
+// return value indicates whether this was successful.
 func (m *StunMessage) Read(data []byte) bool {
 	if len(data) < kStunHeaderSize {
 		log.Warnln("[ice] invalid stun size=", len(data))
@@ -240,6 +249,8 @@ func (m *StunMessage) Read(data []byte) bool {
 	return true
 }
 
+// Write writes this object into a STUN packet. The return value indicates whether
+// this was successful.
 func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 	// 0-2, stun type
 	WriteBig(buf, m.Dtype)
@@ -272,11 +283,15 @@ func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 	return true
 }
 
+// IsLegacy Returns true if the message confirms to RFC3489 rather than
+// RFC5389. The main difference between two version of the STUN
+// protocol is the presence of the magic cookie and different length
+// of transaction ID. For outgoing packets version of the protocol
+// is determined by the lengths of the transaction ID.
 func (m *StunMessage) IsLegacy() bool {
 	if len(m.TransId) == kStunLegacyTransactionIdLength {
 		return true
 	}
-	// kStunTransactionIdLength
 	return false
 }
 
@@ -321,6 +336,7 @@ func (m *StunMessage) AddAttribute(attr StunAttribute) {
 	m.Length += (attr_length + 4)
 }
 
+// AddMessageIntegrity Adds a MESSAGE-INTEGRITY attribute that is valid for the current message.
 func (m *StunMessage) AddMessageIntegrity(key string) bool {
 	integrityAttr := &StunByteStringAttribute{}
 	integrityAttr.SetType(STUN_ATTR_MESSAGE_INTEGRITY)
@@ -354,6 +370,7 @@ func (m *StunMessage) AddMessageIntegrity(key string) bool {
 	return true
 }
 
+// AddFingerprint Adds a FINGERPRINT attribute that is valid for the current message.
 func (m *StunMessage) AddFingerprint() bool {
 	fingerprinAttr := &StunUInt32Attribute{}
 	fingerprinAttr.SetType(STUN_ATTR_FINGERPRINT)
@@ -376,9 +393,13 @@ func (m *StunMessage) AddFingerprint() bool {
 	return true
 }
 
-/// StunAttribute
+// StunAttribute: Base class for all STUN/TURN attributes.
 type StunAttribute interface {
+	// Reads the body (not the type or length) for this type of attribute from
+	// the given buffer.  Return value is true if successful.
 	Read(buf *bytes.Reader) bool
+	// Writes the body (not the type or length) to the given buffer.  Return
+	// value is true if successful.
 	Write(buf *bytes.Buffer) bool
 	SetInfo(attrType StunAttributeType, attrLen uint16, transId string)
 	GetType() StunAttributeType
@@ -445,6 +466,7 @@ func (a *StunAttributeBase) WritePadding(buf *bytes.Buffer, length int) bool {
 	return true
 }
 
+// StunAddressAttribute implements STUN attributes that record an Internet address.
 type StunAddressAttribute struct {
 	StunAttributeBase
 	family StunAddressFamily
@@ -539,6 +561,9 @@ func (a *StunAddressAttribute) SetPort(port uint16) {
 	a.port = port
 }
 
+// StunXorAddressAttribute implements STUN attributes that record an Internet address. When encoded
+// in a STUN message, the address contained in this attribute is XORed with the
+// transaction ID of the message.
 type StunXorAddressAttribute struct {
 	StunAttributeBase
 	Addr    StunAddressAttribute
@@ -602,6 +627,7 @@ func (a *StunXorAddressAttribute) GetXoredIP() {
 	}
 }
 
+// StunByteStringAttribute implements STUN attributes that record an arbitrary byte string.
 type StunByteStringAttribute struct {
 	StunAttributeBase
 	Data []byte
@@ -649,6 +675,7 @@ func (a *StunByteStringAttribute) CopyBytes(data []byte) {
 	copy(a.Data[0:], data)
 }
 
+// StunUInt32Attribute implements STUN attributes that record a 32-bit integer.
 type StunUInt32Attribute struct {
 	StunAttributeBase
 	bits uint32
@@ -683,5 +710,88 @@ func (a *StunUInt32Attribute) Read(buf *bytes.Reader) bool {
 
 func (a *StunUInt32Attribute) Write(buf *bytes.Buffer) bool {
 	WriteBig(buf, a.bits)
+	return true
+}
+
+// The packet length of dtls/rtp/rtcp
+const (
+	kDtlsRecordHeaderLen int = 13
+	kMinRtcpPacketLen    int = 4
+	kMinRtpPacketLen     int = 12
+)
+
+// IsDtlsPacket returns whether a given packet is a dtls.
+func IsDtlsPacket(data []byte) bool {
+	if len(data) < kDtlsRecordHeaderLen {
+		return false
+	}
+	return (data[0] > 19 && data[0] < 64)
+}
+
+// IsRtcpPacket returns whether a given packet is a rtcp.
+// If we're muxing RTP/RTCP, we must inspect each packet delivered and
+// determine whether it is RTP or RTCP. We do so by checking the packet type,
+// and assuming RTP if type is 0-63 or 96-127. For additional details, see
+// http://tools.ietf.org/html/rfc5761.
+// Note that if we offer RTCP mux, we may receive muxed RTCP before we
+// receive the answer, so we operate in that state too.
+func IsRtcpPacket(data []byte) bool {
+	if len(data) < kMinRtcpPacketLen {
+		return false
+	}
+	flag := (data[0] & 0xC0)
+	utype := (data[1] & 0x7F)
+	return (flag == 0x80 && utype >= 64 && utype < 96)
+}
+
+// IsRtpRtcpPacket returns whether a given packet is a rtp/rtcp.
+func IsRtpRtcpPacket(data []byte) bool {
+	if len(data) < kMinRtcpPacketLen {
+		return false
+	}
+	return ((data[0] & 0xC0) == 0x80)
+}
+
+// IsRtpPacket returns whether a given packet is a rtp.
+func IsRtpPacket(data []byte) bool {
+	if len(data) < kMinRtpPacketLen {
+		return false
+	}
+	return (IsRtpRtcpPacket(data) && !IsRtcpPacket(data))
+}
+
+// IsStunPacket returns whether a given packet is a stun request/response.
+func IsStunPacket(data []byte) bool {
+	if len(data) < kStunHeaderSize {
+		return false
+	}
+
+	if data[0] != 0 && data[0] != 1 {
+		return false
+	}
+
+	buf := bytes.NewReader(data)
+
+	var dtype uint16
+	binary.Read(buf, binary.BigEndian, &dtype)
+	if (dtype & 0x8000) != 0 {
+		// RTP/RTCP
+		return false
+	}
+
+	var length uint16
+	binary.Read(buf, binary.BigEndian, &length)
+	if (length & 0x0003) != 0 {
+		// It should be multiple of 4
+		return false
+	}
+
+	var magic uint32
+	binary.Read(buf, binary.BigEndian, &magic)
+	if magic != kStunMagicCookie {
+		// If magic cookie is invalid, only support RFC5389, not including RFC3489
+		return false
+	}
+
 	return true
 }

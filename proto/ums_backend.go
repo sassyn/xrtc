@@ -7,7 +7,7 @@ import (
 	"github.com/PeterXu/xrtc/util"
 )
 
-/// UMS proto
+// UMS proto
 
 func init() {
 	Inst().register("ums", &UmsProto{})
@@ -43,7 +43,7 @@ func (p *UmsProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	}
 }
 
-/// UMS Offer/Answer json format
+// UMS Offer/Answer json format
 
 func ParseUmsRequest(data []byte) (*UmsRequestJson, error) {
 	var jreq UmsRequestJson

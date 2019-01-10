@@ -4,7 +4,7 @@ import (
 	log "github.com/PeterXu/xrtc/logging"
 )
 
-/// proto args/return
+// proto args/return
 
 type ProtoRequest struct {
 	Hijack string // input hijack
@@ -23,8 +23,7 @@ type ProtoResult struct {
 	Data []byte // output data (new http body)
 }
 
-/// ProtoFactory
-
+// ProtoFactory
 type ProtoFactory struct {
 	protos map[string]Proto
 }
@@ -61,7 +60,7 @@ func (p *ProtoFactory) ParseResponse(resp *ProtoResponse) (*ProtoResult, error) 
 	return nil, nil
 }
 
-/// internal interfces
+// Proto internal interfce
 type Proto interface {
 	parseRequest(req *ProtoRequest) (*ProtoResult, error)
 	parseResponse(resp *ProtoResponse) (*ProtoResult, error)

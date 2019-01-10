@@ -1,4 +1,6 @@
 // Package exit allows to register callbacks which are called on program exit.
+//
+// Based-on https://github.com/fabiolb/fabio/exit.
 package exit
 
 import (

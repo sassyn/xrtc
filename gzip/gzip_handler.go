@@ -4,7 +4,9 @@
 // if the client supports this, the response is compressable and
 // not already compressed.
 //
-// Based on https://github.com/smancke/handler/gzip
+// Based on https://github.com/smancke/handler/gzip.
+//
+// Based on https://github.com/fabiolb/fabio/proxy/gzip.
 package gzip
 
 import (

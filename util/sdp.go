@@ -12,17 +12,18 @@ const kSdpCname string = "xwebrtc_endpoint"
 var kNewlineChar = []byte{'\n'}
 var kSpaceChar = []byte{' '}
 
-// a=media
+// MediaType m=audio/video/application
 type MediaType int
 
+// These are different media types
 const (
-	kMediaNil MediaType = iota
-	kMediaAudio
+	kMediaNil   MediaType = 0
+	kMediaAudio MediaType = 1 << (iota - 1)
 	kMediaVideo
-	kMediaAudioVideo
 	kMediaApplication
 )
 
+// SSRC pair: main/rtx
 // a=ssrc
 // a=fmtp:. apt=rtx
 type SSRC struct {
@@ -30,17 +31,18 @@ type SSRC struct {
 	rtx  uint32
 }
 
+// Media Direction
 type SdpMediaDirection int
 
-// sdp direction: sendrecv/sendonly/recvonly/inactive
+// These are different sdp directions: sendrecv/sendonly/recvonly/inactive
 const (
-	kDirectionInactive SdpMediaDirection = -1
-	kDirectionNop                        = 0
-	kDirectionSendOnly                   = 1
-	kDirectionRecvOnly                   = 2
-	kDirectionSendRecv                   = 4
+	kDirectionInactive SdpMediaDirection = iota
+	kDirectionSendOnly
+	kDirectionRecvOnly
+	kDirectionSendRecv
 )
 
+// SDP a=msid-semantic
 // a=msid-semantic:WMS *
 // a=msid-semantic:WMS id1
 type MsidSemantic struct {
@@ -48,6 +50,7 @@ type MsidSemantic struct {
 	msids []string
 }
 
+// SDP a=rtpmap
 // a=rtpmap:111 opus/48000/2
 // a=rtpmap:126 H264/90000
 type RtpMapInfo struct {
@@ -82,6 +85,7 @@ func (r RtpMapInfo) a_fmtp_apt() string {
 	return Itoa(r.apt_ptype) + " apt=" + Itoa(r.ptype)
 }
 
+// NewFmtpInfo return a FmtpInfo object
 // a=fmtp:111 maxplaybackrate=48000;stereo=1;useinbandfec=1
 // a=fmtp:126 profile-level-id=42e01f;level-asymmetry-allowed=1;packetization-mode=1
 // a=fmtp:101 0-15
@@ -89,12 +93,14 @@ func NewFmtpInfo(ptype int) *FmtpInfo {
 	return &FmtpInfo{ptype: ptype, props: make(map[string]int)}
 }
 
+// SDP media format-specific parameters: a=fmtp
 type FmtpInfo struct {
 	ptype int
 	props map[string]int
 	misc  string
 }
 
+// SDP rtcp feedback: a=rtcp-fb
 // a=rtcp-fb:126 nack
 // a=rtcp-fb:126 nack pli
 type RtcpFbInfo struct {
@@ -102,6 +108,7 @@ type RtcpFbInfo struct {
 	fbtype string
 }
 
+// SDP rtp-ext-header: a=extmap
 // a=extmap:1 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
 // a=extmap:2/sendrecv urn:ietf:params:rtp-hdrext:toffset
 type ExtMapInfo struct {
@@ -110,6 +117,7 @@ type ExtMapInfo struct {
 	uri       string
 }
 
+// SDP ssrc: a=ssrc
 // a=ssrc:1081040086 cname:{name}
 // a=ssrc:1081040086 cname:name
 // a=ssrc:1081040086 msid:id1 id2
@@ -123,12 +131,14 @@ type SsrcInfo struct {
 	mslabel string
 }
 
+// SDP a=ssrc-group:FID
 // a=ssrc-group:FID 1081040086 1081040087
 type FidInfo struct {
 	main uint32
 	rtx  uint32
 }
 
+// SDP sctp: a=sctpmap
 // a=sctpmap:5000 webrtc-datachannel 1024
 type SctpInfo struct {
 	port       int
@@ -143,6 +153,7 @@ func NewMediaAttr(mtype, proto string) *MediaAttr {
 		av_rtpmaps: make(map[string]*RtpMapInfo)}
 }
 
+// SDP media attribute lines
 type MediaAttr struct {
 	mtype            string            // m=
 	proto            string            // m=
@@ -192,6 +203,7 @@ func (a *MediaAttr) GetSsrcs() *SSRC {
 	return ssrc
 }
 
+// SDP media lines
 type MediaSdp struct {
 	owner         string       // o=..
 	source        string       // s=..
@@ -205,7 +217,7 @@ type MediaSdp struct {
 	applications  []*MediaAttr // m=application ..
 }
 
-// Parse SDP lines
+// parseSdp to parse SDP lines, return true if ok
 func (m *MediaSdp) parseSdp(data []byte) bool {
 	var mattr *MediaAttr
 	lines := strings.Split(string(data), "\r\n")
@@ -259,7 +271,7 @@ func (m *MediaSdp) parseSdp(data []byte) bool {
 	return true
 }
 
-// Parse SDP attribute: 'a='
+// parseSdp_a to parse SDP attribute: 'a='
 func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 	fields := strings.SplitN(string(line[2:]), ":", 2)
 	akey := fields[0]
@@ -457,7 +469,7 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 	}
 }
 
-/// Media description (sdp offer/answer)
+// Media description (sdp offer/answer)
 type MediaDesc struct {
 	Sdp        MediaSdp
 	haveAnswer bool
@@ -469,24 +481,26 @@ func (m *MediaDesc) Parse(data []byte) bool {
 
 func (m *MediaDesc) GetMediaType() MediaType {
 	mt := kMediaNil
-	if len(m.Sdp.audios) > 0 && len(m.Sdp.videos) > 0 {
-		mt = kMediaAudioVideo
-	} else if len(m.Sdp.audios) > 0 {
-		mt = kMediaAudio
-	} else if len(m.Sdp.videos) > 0 {
-		mt = kMediaVideo
+	if len(m.Sdp.audios) > 0 {
+		mt |= kMediaAudio
+	}
+	if len(m.Sdp.videos) > 0 {
+		mt |= kMediaVideo
+	}
+	if len(m.Sdp.applications) > 0 {
+		mt |= kMediaApplication
 	}
 	return mt
 }
 
 func (m *MediaDesc) GetUfrag() string {
 	mt := m.GetMediaType()
-	if mt == kMediaAudio {
+	if (mt & kMediaAudio) != 0 {
 		return m.Sdp.audios[0].ice_ufrag
-	} else if mt == kMediaVideo {
+	} else if (mt & kMediaVideo) != 0 {
 		return m.Sdp.videos[0].ice_ufrag
-	} else if mt == kMediaAudioVideo {
-		return m.Sdp.audios[0].ice_ufrag
+	} else if (mt & kMediaApplication) != 0 {
+		return m.Sdp.applications[0].ice_ufrag
 	} else {
 		log.Warnln("[desc] invalid media type = ", mt)
 		return ""
@@ -495,12 +509,12 @@ func (m *MediaDesc) GetUfrag() string {
 
 func (m *MediaDesc) GetPasswd() string {
 	mt := m.GetMediaType()
-	if mt == kMediaAudio {
+	if (mt & kMediaAudio) != 0 {
 		return m.Sdp.audios[0].ice_pwd
-	} else if mt == kMediaVideo {
+	} else if (mt & kMediaVideo) != 0 {
 		return m.Sdp.videos[0].ice_pwd
-	} else if mt == kMediaAudioVideo {
-		return m.Sdp.audios[0].ice_pwd
+	} else if (mt & kMediaApplication) != 0 {
+		return m.Sdp.applications[0].ice_pwd
 	} else {
 		log.Warnln("[desc] invalid media type = ", mt)
 		return ""
@@ -509,12 +523,12 @@ func (m *MediaDesc) GetPasswd() string {
 
 func (m *MediaDesc) GetCandidates() []string {
 	mt := m.GetMediaType()
-	if mt == kMediaAudio {
+	if (mt & kMediaAudio) != 0 {
 		return m.Sdp.audios[0].candidates
-	} else if mt == kMediaVideo {
+	} else if (mt & kMediaVideo) != 0 {
 		return m.Sdp.videos[0].candidates
-	} else if mt == kMediaAudioVideo {
-		return m.Sdp.audios[0].candidates
+	} else if (mt & kMediaApplication) != 0 {
+		return m.Sdp.applications[0].candidates
 	} else {
 		log.Warnln("[desc] invalid media type = ", mt)
 		return nil
@@ -838,6 +852,7 @@ func (m *MediaDesc) AnswerSdp() string {
 	return strings.Join(sdp, "\n")
 }
 
+// UpdateSdpCandidates to replace sdp candidates with new.
 func UpdateSdpCandidates(data []byte, candidates []string) []byte {
 	if len(candidates) == 0 {
 		return data
@@ -885,6 +900,7 @@ func UpdateSdpCandidates(data []byte, candidates []string) []byte {
 	return []byte(strings.Join(sdp, sp))
 }
 
+// GetSdpCandidates to parse candidates from sdp
 func GetSdpCandidates(data []byte) []string {
 	lines := strings.Split(string(data), "\r\n")
 	if len(lines) <= 1 {

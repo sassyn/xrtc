@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -17,33 +16,33 @@ import (
 	log "github.com/PeterXu/xrtc/logging"
 )
 
-const (
-	kDtlsRecordHeaderLen int = 13
-	kMinRtcpPacketLen    int = 4
-	kMinRtpPacketLen     int = 12
-)
-
+// NowMs return crrent UTC time(milliseconds) with 32bit
 func NowMs() uint32 {
 	return uint32(time.Now().UTC().UnixNano() / int64(time.Millisecond))
 }
 
+// NowMs64 return crrent UTC time(milliseconds) with 64bit
 func NowMs64() uint64 {
 	return uint64(time.Now().UTC().UnixNano() / int64(time.Millisecond))
 }
 
+// Sleep to wait some milliseconds and then wake
 func Sleep(ms int) {
 	timer := time.NewTimer(time.Millisecond * time.Duration(ms))
 	<-timer.C
 }
 
+// RandomInt return a random int number.
 func RandomInt(n int) int {
 	return rand.Intn(n)
 }
 
+// RandomInt32 return a random uint32 number.
 func RandomUint32() uint32 {
 	return rand.Uint32()
 }
 
+// RandomString return a random n-char(a-zA-Z0-9) string.
 func RandomString(n int) string {
 	var letter = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 	b := make([]rune, n)
@@ -53,14 +52,17 @@ func RandomString(n int) string {
 	return string(b)
 }
 
+// Atou16 convert a string to uint16
 func Atou16(s string) uint16 {
 	return uint16(Atoi(s))
 }
 
+// Atou32 convert a string to uint32
 func Atou32(s string) uint32 {
 	return uint32(Atoi(s))
 }
 
+// Atoi convert a string to int
 func Atoi(s string) int {
 	i, err := strconv.Atoi(s)
 	if err != nil {
@@ -75,11 +77,12 @@ func Atoi(s string) int {
 	return i
 }
 
+// Itoa convert int to a string
 func Itoa(i int) string {
 	return strconv.Itoa(i)
 }
 
-// uint16/uint32/uint64 ---> []byte
+// ValueToBytes convert a uint16/uint32/uint64(Little-Endian) to []byte.
 func ValueToBytes(T interface{}) []byte {
 	size := reflect.TypeOf(T).Size()
 	if size != 2 && size != 4 && size != 8 {
@@ -105,7 +108,7 @@ func Uint32ToBytes(val uint32) []byte {
 	return ValueToBytes(val)
 }
 
-// bytes --Little-> uint16/uint32/uint64
+// BytesToValue convert []byte to a uint16/uint32/uint64(Little-Endian)
 func BytesToValue(bytes []byte) interface{} {
 	size := len(bytes)
 	if size == 2 {
@@ -125,7 +128,8 @@ func BytesToUint32(bytes []byte) uint32 {
 	return BytesToValue(bytes).(uint32)
 }
 
-// uint16/uint32/uint64
+// ValueOrderChange convert a uint16/uint32/uint64(LittleEndian/BigEndian) to
+// another uint16/uint32/uint64(BigEndian/LittleEndian).
 func ValueOrderChange(T interface{}, order binary.ByteOrder) interface{} {
 	bytes := ValueToBytes(T)
 	if bytes == nil {
@@ -157,22 +161,27 @@ func NetToHost32(v uint32) uint32 {
 	return ValueOrderChange(v, binary.LittleEndian).(uint32)
 }
 
+// ReadBig read a uint16/uint32/uint64(BigEndian) from io.Reader
 func ReadBig(r io.Reader, data interface{}) error {
 	return binary.Read(r, binary.BigEndian, data)
 }
 
+// ReadLittle read a uint16/uint32/uint64(LittleEndian) from io.Reader
 func ReadLittle(r io.Reader, data interface{}) error {
 	return binary.Read(r, binary.LittleEndian, data)
 }
 
+// WriteBig write a uint16/uint32/uint64(BigEndian) to io.Writer
 func WriteBig(w io.Writer, data interface{}) error {
 	return binary.Write(w, binary.BigEndian, data)
 }
 
+// WriteLittle write a uint16/uint32/uint64(LittleEndian) to io.Writer
 func WriteLittle(w io.Writer, data interface{}) error {
 	return binary.Write(w, binary.LittleEndian, data)
 }
 
+// Min return the minimum int of x,y
 func Min(x, y int) int {
 	if x < y {
 		return x
@@ -180,6 +189,7 @@ func Min(x, y int) int {
 	return y
 }
 
+// Max return the maximum int of x,y
 func Max(x, y int) int {
 	if x < y {
 		return y
@@ -187,6 +197,7 @@ func Max(x, y int) int {
 	return x
 }
 
+// ByteToInt16Slice converts []byte to []int16(LittleEndian).
 func ByteToInt16Slice(buf []byte) ([]int16, error) {
 	if len(buf)%2 != 0 {
 		return nil, errors.New("trailing bytes")
@@ -199,6 +210,7 @@ func ByteToInt16Slice(buf []byte) ([]int16, error) {
 	return vals, nil
 }
 
+// Int16ToByteSlice converts []int16(LittleEndian) to []byte.
 func Int16ToByteSlice(vals []int16) []byte {
 	buf := make([]byte, len(vals)*2)
 	for i, v := range vals {
@@ -207,78 +219,7 @@ func Int16ToByteSlice(vals []int16) []byte {
 	return buf
 }
 
-func IsDtlsPacket(data []byte) bool {
-	if len(data) < kDtlsRecordHeaderLen {
-		return false
-	}
-	return (data[0] > 19 && data[0] < 64)
-}
-
-func IsRtcpPacket(data []byte) bool {
-	// If we're muxing RTP/RTCP, we must inspect each packet delivered and
-	// determine whether it is RTP or RTCP. We do so by checking the packet type,
-	// and assuming RTP if type is 0-63 or 96-127. For additional details, see
-	// http://tools.ietf.org/html/rfc5761.
-	// Note that if we offer RTCP mux, we may receive muxed RTCP before we
-	// receive the answer, so we operate in that state too.
-
-	if len(data) < kMinRtcpPacketLen {
-		return false
-	}
-	flag := (data[0] & 0xC0)
-	utype := (data[1] & 0x7F)
-	return (flag == 0x80 && utype >= 64 && utype < 96)
-}
-
-func IsRtpRtcpPacket(data []byte) bool {
-	if len(data) < kMinRtcpPacketLen {
-		return false
-	}
-	return ((data[0] & 0xC0) == 0x80)
-}
-
-func IsRtpPacket(data []byte) bool {
-	if len(data) < kMinRtpPacketLen {
-		return false
-	}
-	return (IsRtpRtcpPacket(data) && !IsRtcpPacket(data))
-}
-
-func IsStunPacket(data []byte) bool {
-	if len(data) < kStunHeaderSize {
-		return false
-	}
-
-	if data[0] != 0 && data[0] != 1 {
-		return false
-	}
-
-	buf := bytes.NewReader(data)
-
-	var dtype uint16
-	binary.Read(buf, binary.BigEndian, &dtype)
-	if (dtype & 0x8000) != 0 {
-		// RTP/RTCP
-		return false
-	}
-
-	var length uint16
-	binary.Read(buf, binary.BigEndian, &length)
-	if (length & 0x0003) != 0 {
-		// It should be multiple of 4
-		return false
-	}
-
-	var magic uint32
-	binary.Read(buf, binary.BigEndian, &magic)
-	if magic != kStunMagicCookie {
-		// If magic cookie is invalid, only support RFC5389, not including RFC3489
-		return false
-	}
-
-	return true
-}
-
+// ParseRtpSeqInRange return true if RTP-SEQ(uint16) seqn between (start, start+size).
 func ParseRtpSeqInRange(seqn, start, size uint16) bool {
 	var n int = int(seqn)
 	var nh int = ((1 << 16) + n)
@@ -287,6 +228,7 @@ func ParseRtpSeqInRange(seqn, start, size uint16) bool {
 	return (s <= n && n < e) || (s <= nh && nh < e)
 }
 
+// CompareRtpSeq return true if RTP-SEQ(uint16) seq1 > seq2.
 func CompareRtpSeq(seq1, seq2 uint16) int {
 	diff := seq1 - seq2
 	if diff != 0 {
@@ -300,8 +242,7 @@ func CompareRtpSeq(seq1, seq2 uint16) int {
 	}
 }
 
-/// StringPair like std::pair
-
+// StringPair like std::pair
 type StringPair struct {
 	First  string
 	Second string
@@ -311,6 +252,7 @@ func (sp StringPair) ToStringBySpace() string {
 	return sp.First + " " + sp.Second
 }
 
+// NetAddrString return a complete network string: "udp|tcp://host:port".
 func NetAddrString(addr net.Addr) string {
 	if strings.Contains(addr.String(), "://") {
 		return addr.String()
@@ -319,12 +261,12 @@ func NetAddrString(addr net.Addr) string {
 	}
 }
 
-/// Cached Conn
-
+// NewNetConn return a new net.Conn object with caching function.
 func NewNetConn(c net.Conn) *NetConn {
 	return &NetConn{nil, c, c}
 }
 
+// NetConn extends net.Conn
 type NetConn struct {
 	cached   []byte
 	nc       net.Conn
@@ -387,10 +329,12 @@ func (c *NetConn) Close() error {
 	return c.nc.Close()
 }
 
+// SocketFD for system socket description.
 type SocketFD interface {
 	File() (f *os.File, err error)
 }
 
+// SetSocketReuseAddr to set socket with SO_REUSEADDR.
 func SetSocketReuseAddr(sock SocketFD) {
 	if file, err := sock.File(); err == nil {
 		log.Println("[util] set reuse addr")
@@ -398,7 +342,7 @@ func SetSocketReuseAddr(sock SocketFD) {
 	}
 }
 
-// LocalIP tries to determine a non-loopback address for the local machine
+// LocalIP tries to determine a non-loopback address for local machine
 func LocalIP() (net.IP, error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -414,6 +358,7 @@ func LocalIP() (net.IP, error) {
 	return nil, nil
 }
 
+// LocalIPString to return a non-loopback address string for local machine.
 func LocalIPString() string {
 	ip, err := LocalIP()
 	if err != nil {
@@ -427,11 +372,16 @@ func LocalIPString() string {
 	return ip.String()
 }
 
+// LookupIP looks up host using the local resolver.
+// It returns a host's IPv4 address (non-loopback).
 func LookupIP(host string) string {
 	hostIp := host
 	if ips, err := net.LookupIP(host); err == nil {
-		if len(ips) > 0 {
-			hostIp = ips[0].String()
+		for _, ip := range ips {
+			if ip.IsGlobalUnicast() && (ip.To4() != nil) {
+				hostIp = ip.String()
+				break
+			}
 		}
 	}
 	return hostIp

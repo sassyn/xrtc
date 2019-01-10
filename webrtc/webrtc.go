@@ -8,7 +8,7 @@ import (
 
 const kDefaultConfig = "/tmp/etc/routes.yml"
 
-/// external interfaces
+// external interfaces
 
 const (
 	WebrtcActionUnknown = iota
@@ -32,17 +32,17 @@ type Webrtc interface {
 	Exit()
 }
 
-/// gloabl variables
+// gloabl variables
 var gMutex sync.RWMutex
 var gMaxHub *MaxHub
 var gConfig *Config
 
-/// module init
+// module init
 func init() {
 	log.SetDefault()
 }
 
-/// load config
+// loadConfig load config parameters.
 func loadConfig(fname string) {
 	config := NewConfig()
 	if !config.Load(fname) {
@@ -52,7 +52,7 @@ func loadConfig(fname string) {
 	gConfig = config
 }
 
-/// start servers
+// startServers start servers from config.
 func startServers(hub *MaxHub) {
 	for _, cfg := range gConfig.UdpServers {
 		udp := NewUdpServer(hub, cfg)
@@ -73,7 +73,7 @@ func startServers(hub *MaxHub) {
 	}
 }
 
-/// entry function
+// Inst the global entry function.
 func Inst() Webrtc {
 	gMutex.Lock()
 	defer gMutex.Unlock()

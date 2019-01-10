@@ -16,6 +16,7 @@ import (
 	"github.com/PeterXu/xrtc/yaml"
 )
 
+// Config contains all services(udp/tcp/http)
 type Config struct {
 	UdpServers  map[string]*UDPConfig
 	TcpServers  map[string]*TCPConfig
@@ -30,6 +31,7 @@ func NewConfig() *Config {
 	}
 }
 
+// YamlKeys return the key list of one yaml.Map node.
 func YamlKeys(node yaml.Map) []string {
 	var keys []string
 	for k, _ := range node {
@@ -38,6 +40,7 @@ func YamlKeys(node yaml.Map) []string {
 	return keys
 }
 
+// IsYamlMap convert to a yaml.Map node.
 func IsYamlMap(node yaml.Node) (yaml.Map, error) {
 	if m, ok := node.(yaml.Map); ok {
 		return m, nil
@@ -45,6 +48,7 @@ func IsYamlMap(node yaml.Node) (yaml.Map, error) {
 	return nil, errors.New("Not yaml.Map")
 }
 
+// IsYamlMap convert to a yaml.List node.
 func IsYamlList(node yaml.Node) (yaml.List, error) {
 	if l, ok := node.(yaml.List); ok {
 		return l, nil
@@ -52,6 +56,7 @@ func IsYamlList(node yaml.Node) (yaml.List, error) {
 	return nil, errors.New("Not yaml.List")
 }
 
+// IsYamlMap convert to a yaml.Scalar node.
 func IsYamlScalar(node yaml.Node) (yaml.Scalar, error) {
 	if s, ok := node.(yaml.Scalar); ok {
 		return s, nil
@@ -59,6 +64,7 @@ func IsYamlScalar(node yaml.Node) (yaml.Scalar, error) {
 	return "", errors.New("Not yaml.Scalar")
 }
 
+// IsYamlMap convert a yaml.Scalar to a string.
 func IsYamlString(node yaml.Node) string {
 	if s, err := IsYamlScalar(node); err != nil {
 		return ""
@@ -67,6 +73,7 @@ func IsYamlString(node yaml.Node) string {
 	}
 }
 
+// Load loads all service from config file.
 func (c *Config) Load(fname string) bool {
 	ycfg, err := yaml.ReadFile(fname)
 	if err != nil {
@@ -141,17 +148,7 @@ func (c *Config) Load(fname string) bool {
 	return true
 }
 
-func loadCandidateIP(node yaml.List, err error) []string {
-	var ips []string
-	if err == nil {
-		for _, ip := range node {
-			ips = append(ips, IsYamlString(ip))
-		}
-	}
-	return ips
-}
-
-/// Net basic params
+// Net basic params
 type NetParams struct {
 	Enable     bool
 	Addr       string // "host:port"
@@ -160,6 +157,7 @@ type NetParams struct {
 	Candidates []string // candidate ip
 }
 
+// Load loads the "net:" parameters under one service.
 func (n *NetParams) Load(node yaml.Map, proto string) {
 	n.Enable = (IsYamlString(node.Key("enable")) == "true")
 	n.Addr = IsYamlString(node.Key("addr"))
@@ -197,18 +195,17 @@ func (n *NetParams) Load(node yaml.Map, proto string) {
 	log.Println("[config] net:", n)
 }
 
-/// UDP config
 func NewUDPConfig(name string) *UDPConfig {
 	cfg := &UDPConfig{Name: name}
 	return cfg
 }
 
+// UDP config
 type UDPConfig struct {
 	Name string
 	Net  NetParams
 }
 
-/// TCP config
 func NewTCPConfig(name string) *TCPConfig {
 	cfg := &TCPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
@@ -218,6 +215,7 @@ func NewTCPConfig(name string) *TCPConfig {
 	return cfg
 }
 
+// TCP config
 type TCPConfig struct {
 	Name       string
 	Net        NetParams
@@ -225,7 +223,6 @@ type TCPConfig struct {
 	Http       HttpParams
 }
 
-/// HTTP config
 func NewHTTPConfig(name string) *HTTPConfig {
 	cfg := &HTTPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
@@ -235,13 +232,14 @@ func NewHTTPConfig(name string) *HTTPConfig {
 	return cfg
 }
 
+// HTTP config
 type HTTPConfig struct {
 	Name string
 	Net  NetParams
 	Http HttpParams
 }
 
-/// HTTP params
+// HTTP default params
 var kDefaultHttpParams = HttpParams{
 	MaxConns:              100,
 	IdleConnTimeout:       time.Second * 30,
@@ -254,6 +252,7 @@ var kDefaultHttpParams = HttpParams{
 	STSHeader:             STSHeader{},
 }
 
+// HttpParams for http configuration.
 type HttpParams struct {
 	Routes      []util.StringPair
 	HostRoutes  map[string]string // host@
@@ -284,6 +283,7 @@ type STSHeader struct {
 	Preload    bool
 }
 
+// Load loads the http parameters(routes/hijacks/..) under a service.
 func (h *HttpParams) Load(node yaml.Map) {
 	h.Root = IsYamlString(node.Key("root"))
 	if len(h.Root) == 0 {
@@ -298,6 +298,7 @@ func (h *HttpParams) Load(node yaml.Map) {
 	}
 	log.Println("[config] http:", h)
 }
+
 func (h *HttpParams) loadHttpRoutes(node yaml.List) {
 	//log.Println("[config] load routes, ", node)
 	for _, r := range node {

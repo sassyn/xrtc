@@ -7,7 +7,7 @@ import (
 	"github.com/PeterXu/xrtc/util"
 )
 
-/// Janus proto
+// Janus proto
 
 func init() {
 	Inst().register("janus", &JanusProto{})
@@ -53,7 +53,7 @@ func (p *JanusProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	}
 }
 
-/// Janus Offer/Answer/Candidate json format
+// Janus Offer/Answer/Candidate json format
 
 const kJanusMessage = "message" // offer
 const kJanusTrickle = "trickle" // candidate

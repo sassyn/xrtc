@@ -12,6 +12,8 @@
 // printed does not end in a newline, the logger will add one.
 // The Fatal functions call os.Exit(1) after writing the log message.
 // The Panic functions call panic after writing the log message.
+//
+// Based-on https://golang.org/pkg/log.
 package logging
 
 import (
@@ -55,8 +57,8 @@ type Logger struct {
 	flag   int        // properties
 	out    io.Writer  // destination for output
 	buf    []byte     // for accumulating text to write
-	color  int
-	level  string
+	color  int        // output level tag with color
+	level  string     // level tag
 }
 
 // New creates a new Logger. The out variable sets the
@@ -157,8 +159,11 @@ func (l *Logger) Output(calldepth int, s string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Fromat level string with color or not
 	if l.flag&Lcolor != 0 {
 		s = fmt.Sprintf("\x1b[%dm%s\x1b[0m %-44s ", l.color, l.level, strings.TrimRight(s, "\r\n"))
+	} else {
+		s = fmt.Sprintf("%s %-44s ", l.level, strings.TrimRight(s, "\r\n"))
 	}
 
 	if l.flag&(Lshortfile|Llongfile) != 0 {
@@ -263,7 +268,7 @@ func (l *Logger) SetPrefix(prefix string) {
 	l.prefix = prefix
 }
 
-// SetPrefix sets the output color for the logger when enabled.
+// SetLevel sets output level string and its color for the logger.
 func (l *Logger) SetLevel(level Level) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -284,10 +289,7 @@ func (l *Logger) SetLevel(level Level) {
 	l.level = strings.ToUpper(level.String())[0:4]
 }
 
-////////////////////////
-
-// Log color
-
+// These are different color of logging levels.
 const (
 	nocolor = 0
 	red     = 31
@@ -340,7 +342,7 @@ func (level Level) String() string {
 	return "unknown"
 }
 
-// SetDefault
+// SetDefault sets the output options for the standard logger.
 func SetDefault() {
 	SetFlags(Ldate | Ltime | Lcolor)
 }
