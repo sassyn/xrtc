@@ -18,14 +18,18 @@
 ### 1). Direct cases
 
 ```
-WebRTC client A   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/..)
-WebRTC client B   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/..)
+WebRTC client A   <---HTTP/WS--->  WebRTC server(Janus/..)
+WebRTC client B   <---HTTP/WS--->  WebRTC server(Janus/..)
+WebRTC client C   <---HTTP/WS--->  WebRTC server(Janus/..)
 
-WebRTC client A   <---ICE port0--->  WebRTC server(Janus/Jitsi/..)
-WebRTC client B   <---ICE port1--->  WebRTC server(Janus/Jitsi/..)
+WebRTC client A   <---ICE port0--->  WebRTC server(Janus/..)
+WebRTC client B   <---ICE port1--->  WebRTC server(Janus/..)
+WebRTC client C   <---ICE port2--->  WebRTC server(Janus/..)
 ```
 
-The WebRTC servers(Janus/Jitsi) need to use different ports for different clients.
+The clients must connect to the same WebRTC server for interacting with each other.
+
+And also the WebRTC server(Janus) need to use different ports for different clients.
 
 However, most servers only provide limited ports for security.
 
@@ -33,11 +37,13 @@ However, most servers only provide limited ports for security.
 ### 2). xRTC cases
 
 ```
-WebRTC client A   <--HTTP-RP-->   xRTC(reverse porxy)   <--HTTP-RP-->  WebRTC server
-WebRTC client B   <--HTTP-RP-->   xRTC(reverse porxy)   <--HTTP-RP-->  WebRTC server
+WebRTC client A   <--HTTP-RP-->   xRTC0(reverse porxy)   <--HTTP-RP-->  WebRTC server
+WebRTC client B   <--HTTP-RP-->   xRTC0(reverse porxy)   <--HTTP-RP-->  WebRTC server
+WebRTC client C   <--HTTP-RP-->   xRTC1(reverse porxy)   <--HTTP-RP-->  WebRTC server
 
-WebRTC client A   <--ICE port0-->   xRTC  <--ICE port1-->  WebRTC server
-WebRTC client B   <--ICE port0-->   xRTC  <--ICE port2-->  WebRTC server
+WebRTC client A   <--ICE port0-->   xRTC0  <--ICE port1-->  WebRTC server
+WebRTC client B   <--ICE port0-->   xRTC0  <--ICE port2-->  WebRTC server
+WebRTC client C   <--ICE port1-->   xRTC1  <--ICE port3-->  WebRTC server
 ```
 
 The xRTC can use the same port (ICE-UDP/TCP) for different clients.

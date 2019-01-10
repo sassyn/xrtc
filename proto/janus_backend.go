@@ -7,8 +7,7 @@ import (
 	"github.com/PeterXu/xrtc/util"
 )
 
-// Janus proto
-
+// init regsiter Janus proto, auto-loading.
 func init() {
 	Inst().register("janus", &JanusProto{})
 }
@@ -16,6 +15,8 @@ func init() {
 type JanusProto struct {
 }
 
+// parseRequest parse Janus REST-API request from Janus client.
+// return sdp offer without new HTTP-body if ok, else return nil
 func (p *JanusProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 	if jreq, err := ParseJanusRequest(req.Data); err == nil {
 		if jreq.Janus == kJanusMessage && jreq.Jsep != nil {
@@ -33,6 +34,8 @@ func (p *JanusProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 	}
 }
 
+// parseResponse parse REST-API response from Janus server.
+// return sdp answer with new HTTP-body if ok, else return nil
 func (p *JanusProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	if jresp, err := ParseJanusResponse(resp.Data); err == nil {
 		if jresp.Janus == kJanusEvent && jresp.Jsep != nil {
@@ -53,11 +56,12 @@ func (p *JanusProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	}
 }
 
-// Janus Offer/Answer/Candidate json format
-
-const kJanusMessage = "message" // offer
-const kJanusTrickle = "trickle" // candidate
-const kJanusEvent = "event"     // answer
+// These are the type of Janus json message formats
+const (
+	kJanusMessage = "message" // sdp offer in this message
+	kJanusTrickle = "trickle" // candidate in this message
+	kJanusEvent   = "event"   // sdp answer in this message
+)
 
 func ParseJanusRequest(data []byte) (*JanusRequestJson, error) {
 	var jreq JanusRequestJson
@@ -65,6 +69,7 @@ func ParseJanusRequest(data []byte) (*JanusRequestJson, error) {
 	return &jreq, err
 }
 
+// JanusRequestJson
 type JanusRequestJson struct {
 	Janus       string          `json:"janus"`
 	Body        *JanusBody      `json:"body, omitempty"`
@@ -87,6 +92,7 @@ func EncodeJanusResponse(resp *JanusResponseJson) []byte {
 	}
 }
 
+// JanusResponseJson
 type JanusResponseJson struct {
 	Janus       string                 `json:"janus"`
 	SessionId   int                    `json:"session_id"`

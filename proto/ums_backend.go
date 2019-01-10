@@ -7,8 +7,7 @@ import (
 	"github.com/PeterXu/xrtc/util"
 )
 
-// UMS proto
-
+// init regsiter UMS proto, auto-loading.
 func init() {
 	Inst().register("ums", &UmsProto{})
 }
@@ -16,6 +15,8 @@ func init() {
 type UmsProto struct {
 }
 
+// parseRequest parse UMS REST request from UMS client.
+// return sdp offer without new HTTP-body if ok, else return nil
 func (p *UmsProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 	if jreq, err := ParseUmsRequest(req.Data); err == nil {
 		offer := []byte(jreq.GetOffer())
@@ -27,6 +28,8 @@ func (p *UmsProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 	}
 }
 
+// parseResponse parse UMS REST response from UMS server.
+// return sdp answer with new HTTP-body if ok, else return nil
 func (p *UmsProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	if jresp, err := ParseUmsResponse(resp.Data); err == nil {
 		answer := []byte(jresp.GetAnswer())
