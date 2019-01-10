@@ -18,11 +18,11 @@
 ### 1). Direct cases
 
 ```
-WebRTC client A   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/Moxtra)
-WebRTC client B   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/Moxtra)
+WebRTC client A   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/..)
+WebRTC client B   <---HTTP/WS--->  WebRTC server(Janus/Jitsi/..)
 
-WebRTC client A   <---ICE port0--->  WebRTC server(Janus/Jitsi/Moxtra)
-WebRTC client B   <---ICE port1--->  WebRTC server(Janus/Jitsi/Moxtra)
+WebRTC client A   <---ICE port0--->  WebRTC server(Janus/Jitsi/..)
+WebRTC client B   <---ICE port1--->  WebRTC server(Janus/Jitsi/..)
 ```
 
 The WebRTC servers(Janus/Jitsi) need to use different ports for different clients.
