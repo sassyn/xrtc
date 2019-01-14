@@ -77,7 +77,7 @@ func (u *UdpServer) Run() {
 }
 
 func (u *UdpServer) writing() {
-	tickChan := time.NewTicker(time.Second * 5).C
+	tickChan := time.NewTicker(time.Second * 10).C
 
 	for {
 		select {
@@ -98,7 +98,7 @@ func (u *UdpServer) writing() {
 				log.Warnln("[udp] not-send invalid msg")
 			}
 		case <-tickChan:
-			//log.Printf("[udp] statistics, sendCount=%d, recvCount=%d\n", u.sendCount, u.recvCount)
+			log.Printf("[udp] statistics, sendCount=%d, recvCount=%d\n", u.sendCount, u.recvCount)
 		case <-u.exitTick:
 			close(u.exitTick)
 			log.Println("[udp] udp exit writing")

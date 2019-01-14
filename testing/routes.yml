@@ -1,4 +1,17 @@
 services:
+    upstream_janus1:
+        proto: upstream
+        servers:
+            - http: http://janus_api:8088
+            - ws: ws://janus_api:8188
+
+    upstream_ums1:
+        proto: upstream
+        servers:
+            - http: https://ums_api
+            - ws: wss://ums_api
+            - ws: wss://ums_api_backup
+
     httpsvr1:
         proto: http
         net:
@@ -7,6 +20,7 @@ services:
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
         http:
+            servername: _
             root: /tmp/html
             max_conns:              100
             dial_timeout:           10s
@@ -14,44 +28,44 @@ services:
             keepalive_timeout:      120s
             flush_interval:         10ms
             global_flush_interval:  10ms
-            hijacks:
-                - host@ums.zenvv.com: ums
-                - /board:   ums
-                - host@janus.zenvv.com: janus
-                - ws@janus-protocol: janus
-                - /janus:   janus
             routes:
-                - host@ums.zenvv.com: https://ums_api
-                - /board:   https://ums_api
-                - /status:   https://ums_api
-                - host@janus.zenvv.com: http://janus_api:8088
-                - ws@janus-protocol:   ws://janus_api:8188
-                - /janus:   http://janus_api:8088
-                - /test:    http://html_api:8080
-                - /out:     http://html_api:8080
+                janus:
+                    upstream: http://upstream_janus1
+                    hosts:
+                        - janus.zenvv.com
+                    protos:
+                        - ws@janus-protocol
+                    paths:
+                        - /janus
+                ums:
+                    upstream: http://upstream_ums1
+                    hosts:
+                        - ums.zenvv.com
+                    paths:
+                        - /board
+                        - /status
+                        - /object/version
+                default:
+                    upstream: http://html_api:8080
+                    paths:
+                        - /test: /test
+                        - /out: /out
 
     tcpsvr1:
         proto: tcp
         net:
-            enable: false
+            enable: true
             addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
             ips:
                 - host_ip
-        enable_http: true
-        http:
-            max_conns:              4
-            dial_timeout:           10s
-            response_timeout:       10s
-            keepalive_timeout:      120s
-            flush_interval:         10ms
-            global_flush_interval:  10ms
+        enable_http: false
 
     udpsvr1:
         proto: udp
         net:
-            enable: true
+            enable: false
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key

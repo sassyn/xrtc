@@ -195,6 +195,7 @@ func (m *StunMessage) Read(data []byte) bool {
 
 	if int(m.Length) != buf.Len() {
 		// TODO: length= 80 , Len= 696
+		// invalid length= 108 , Len= 31
 		log.Warnln("[ice] invalid length=", m.Length, ", Len=", buf.Len())
 		return false
 	}

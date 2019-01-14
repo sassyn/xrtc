@@ -10,6 +10,15 @@
 - [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
 
 
+<br>
+
+# TODO
+
+- [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
+- [ ] Full HTTP/WebRTC dynamic routing by Conference Id (one proxy to multi-WebRTC servers: `upstream`).
+- [ ] Transparent WebRTC routing(`ice_direct`) between client and WebRTC server.
+- [ ] Jitsi WebRTC server support
+
 
 <br>
 
@@ -47,6 +56,7 @@ WebRTC client C   <--ICE port1-->   xRTC1  <--ICE port3-->  WebRTC server
 ```
 
 The xRTC can use the same port (ICE-UDP/TCP) for different clients.
+
 
 <br>
 
@@ -151,7 +161,51 @@ The server's fields contains:
 
 <br>
 
-## TODO
+## 4. Build & Run
 
-- [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
-- [ ] Jitsi WebRTC server support
+1. Library dependency
+	
+	libffi, libuuid, glib2, libnice, gnutls, openssl
+	
+2. Routing config
+
+	```
+	$> vim testing/routes.yml
+	```
+	
+3. Common Build for Linux/Mac
+
+	```
+	$> make
+	$> cp testing/routes.yml /tmp/etc/routes.yml
+	$> make run
+	```
+	
+	
+4. Docker Build for CentOS-7
+	
+	This only works when Step-2 are successful in CentOS-7.
+	
+	1). Build and Deploy
+	
+	``` 
+	$> make docker
+	$> make deploy
+	```
+	
+	2). Generate docker-build image for CentOS-7
+	
+	```
+	$> make docker-build
+	```
+	
+5. Docker Build for Others(Linux/Mac)
+	
+	This is a cross-platform building and deploying.
+
+	However, it requires the docker image generated in Step-4-(2).
+	
+	``` 
+	$> make docker-mac
+	$> make deploy-mac
+	```

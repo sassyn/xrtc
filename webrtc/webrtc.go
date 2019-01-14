@@ -37,11 +37,6 @@ var gMutex sync.RWMutex
 var gMaxHub *MaxHub
 var gConfig *Config
 
-// module init
-func init() {
-	log.SetDefault()
-}
-
 // loadConfig load config parameters.
 func loadConfig(fname string) {
 	config := NewConfig()

@@ -21,6 +21,7 @@ import (
 	gziph "github.com/PeterXu/xrtc/gzip"
 	log "github.com/PeterXu/xrtc/logging"
 	"github.com/PeterXu/xrtc/proto"
+	"github.com/PeterXu/xrtc/util"
 	uuid "github.com/PeterXu/xrtc/uuid"
 )
 
@@ -215,6 +216,9 @@ type RouteTarget struct {
 type HTTPProxyHandler struct {
 	Config HttpParams
 
+	// Cache
+	Cache *Cache
+
 	// Transport is the http connection pool configured with timeouts.
 	// The proxy will panic if this value is nil.
 	Transport http.RoundTripper
@@ -226,16 +230,18 @@ type HTTPProxyHandler struct {
 
 	// Lookup returns a target host for the given request.
 	// The proxy will panic if this value is nil.
-	Lookup func(*http.Request) *RouteTarget
+	Lookup func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget
 
 	// UUID returns a unique id in uuid format.
 	// If UUID is nil, uuid.NewUUID() is used.
 	UUID func() string
 }
 
-func NewHTTPProxyHandle(cfg HttpParams, lookup func(*http.Request) *RouteTarget) http.Handler {
+func NewHTTPProxyHandle(cfg HttpParams,
+	lookup func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget) http.Handler {
 	return &HTTPProxyHandler{
 		Config:            cfg,
+		Cache:             NewCache(),
 		Transport:         newHTTPTransport(nil, cfg),
 		InsecureTransport: newHTTPTransport(&tls.Config{InsecureSkipVerify: true}, cfg),
 		Lookup:            lookup,
@@ -258,7 +264,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set(p.Config.RequestID, id())
 	}
 
-	t := p.Lookup(r)
+	t := p.Lookup(p, w, r)
 	//log.Println("[proxy] route lookup=", t)
 
 	if t == nil {
@@ -399,48 +405,97 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 	// Pass HttpParams object not by pointer
 	//  When http params changed, only applys to subsequent requests not old
-	return NewHTTPProxyHandle(*cfg, func(r *http.Request) *RouteTarget {
+	return NewHTTPProxyHandle(*cfg, func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget {
 		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
-		var routePath string
+
+		var hijack string
 		var routeUri string
 
-		for {
-			// check host@
-			if host, _, err := net.SplitHostPort(r.Host); err == nil {
-				host = "host@" + host
-				//log.Println("[proxy] route check host=", host)
-				if r, ok := cfg.HostRoutes[host]; ok {
-					routePath = host
-					routeUri = r
-					break
-				}
-			}
+		sch := scheme(r)
 
-			// check ws@
-			if proto := r.Header.Get("Sec-Websocket-Protocol"); len(proto) > 0 {
-				proto = "ws@" + proto
-				//log.Println("[proxy] route check proto=", proto)
-				if r, ok := cfg.ProtoRoutes[proto]; ok {
-					routePath = proto
-					routeUri = r
-					break
+		// check route by session rid
+		rid, err := sessionRoute(w, r)
+		if err == nil {
+			if item := h.Cache.Get(rid); item != nil {
+				if rt, ok := item.data.(*util.StringPair); ok {
+					hijack = rt.First
+					routeUri = rt.Second
+					log.Println("[proxy] route by rid=", rid, routeUri, r.URL)
 				}
 			}
-
-			// check common path: prefix-only
-			for _, item := range cfg.Routes {
-				//log.Println("[proxy] route check path,", item, r.URL.Path)
-				if strings.HasPrefix(r.URL.Path, item.First) {
-					routePath = r.URL.Path
-					routeUri = item.Second
-					break
-				}
-			}
-			break
+			//log.Println("[proxy] route by rid=", rid, routeUri, r.URL)
+		} else {
+			rid = routeId()
+			//log.Println("[proxy] route err by rid=", rid, routeUri, r.URL, err)
 		}
 
-		if len(routeUri) <= 1 {
-			return nil
+		// check route from request
+		if len(routeUri) == 0 {
+			var route *RouteTable
+			for {
+				// check host
+				if host, _, err := net.SplitHostPort(r.Host); err == nil {
+					//log.Println("[proxy] route check host=", host)
+					if rt, ok := cfg.HostRoutes[host]; ok {
+						route = rt
+						break
+					}
+				}
+
+				// check ws@
+				if proto := r.Header.Get("Sec-Websocket-Protocol"); len(proto) > 0 {
+					proto = "ws@" + proto
+					//log.Println("[proxy] route check proto=", proto)
+					if rt, ok := cfg.ProtoRoutes[proto]; ok {
+						route = rt
+						break
+					}
+				}
+
+				// check common path: prefix-only
+				for _, rt := range cfg.PathRoutes {
+					//log.Println("[proxy] route check path,", item, r.URL.Path)
+					for _, item := range rt.Paths {
+						if strings.HasPrefix(r.URL.Path, item.First) {
+							route = rt
+							break
+						}
+					}
+				}
+				break
+			}
+
+			if route == nil {
+				return nil
+			}
+
+			// check upstream uri
+			if route.UpStream == nil {
+				routeUri = route.UpStreamId
+			} else {
+				switch {
+				case sch == "http" || sch == "https":
+					for _, v := range route.UpStream.HttpServers {
+						routeUri = v
+						break
+					}
+				case sch == "ws" || sch == "wss":
+					for _, v := range route.UpStream.WsServers {
+						routeUri = v
+						break
+					}
+				}
+			}
+
+			if len(routeUri) < 4 {
+				//log.Warnln("[proxy] no valid uri")
+				return nil
+			}
+
+			hijack = route.Tag
+
+			// store route
+			h.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
 		}
 
 		// check routeUri is valid
@@ -450,14 +505,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			return nil
 		}
 
-		// check hijack
-		var hijack string
-		for key, val := range cfg.Hijacks {
-			if strings.HasPrefix(routePath, key) {
-				hijack = val
-				break
-			}
-		}
+		log.Println("[proxy] route hijack-tag=", hijack, ", routeUri=", routeUri, ", reqUri=", r.URL)
 
 		return &RouteTarget{
 			Service:       name,

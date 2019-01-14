@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	//"net/url"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -18,6 +18,7 @@ import (
 
 // Config contains all services(udp/tcp/http)
 type Config struct {
+	UpStreams   map[string]*UPSConfig
 	UdpServers  map[string]*UDPConfig
 	TcpServers  map[string]*TCPConfig
 	HttpServers map[string]*HTTPConfig
@@ -25,6 +26,7 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
+		UpStreams:   make(map[string]*UPSConfig),
 		UdpServers:  make(map[string]*UDPConfig),
 		TcpServers:  make(map[string]*TCPConfig),
 		HttpServers: make(map[string]*HTTPConfig),
@@ -94,27 +96,42 @@ func (c *Config) Load(fname string) bool {
 		}
 	}
 
-	// check servers
+	// check services
 	for _, key := range YamlKeys(services) {
-		server, err := IsYamlMap(services.Key(key))
+		service, err := IsYamlMap(services.Key(key))
 		if err != nil {
-			log.Warn("[config] check server [", key, "], err=", err)
+			log.Warn("[config] check service [", key, "], err=", err)
 			continue
 		}
 
 		var proto yaml.Scalar
-		if proto, err = IsYamlScalar(server.Key("proto")); err != nil {
-			log.Warn("[config] check server proto, err=", err)
+		if proto, err = IsYamlScalar(service.Key("proto")); err != nil {
+			log.Warn("[config] check service proto, err=", err)
+			continue
+		}
+
+		log.Printf("[config] parse service [%s]: proto[%s]", key, proto)
+
+		if proto.String() == "upstream" {
+			var servers yaml.List
+			if servers, err = IsYamlList(service.Key("servers")); err != nil {
+				log.Warn("[config] check upstream servers, err=", err)
+				continue
+			}
+
+			ups := NewUPSConfig()
+			ups.LoadServers(servers)
+			c.UpStreams[key] = ups
+			fmt.Println()
 			continue
 		}
 
 		var netp yaml.Map
-		if netp, err = IsYamlMap(server.Key("net")); err != nil {
-			log.Warn("[config] check server net, err=", err)
+		if netp, err = IsYamlMap(service.Key("net")); err != nil {
+			log.Warn("[config] check service net, err=", err)
 			continue
 		}
 
-		log.Printf("[config] parse server [%s]: proto[%s]", key, proto)
 		switch proto.String() {
 		case "udp":
 			udpsvr := NewUDPConfig(key)
@@ -123,11 +140,11 @@ func (c *Config) Load(fname string) bool {
 		case "tcp":
 			tcpsvr := NewTCPConfig(key)
 			tcpsvr.Net.Load(netp, "tcp")
-			enableHttp := IsYamlString(server.Key("enable_http"))
+			enableHttp := IsYamlString(service.Key("enable_http"))
 			//log.Println("[config] check tcp's enable_http=", enableHttp)
 			tcpsvr.EnableHttp = (enableHttp == "true")
 			if tcpsvr.EnableHttp {
-				if httpp, err := IsYamlMap(server.Key("http")); err == nil {
+				if httpp, err := IsYamlMap(service.Key("http")); err == nil {
 					tcpsvr.Http.Load(httpp)
 				}
 			}
@@ -135,7 +152,7 @@ func (c *Config) Load(fname string) bool {
 		case "http":
 			httpsvr := NewHTTPConfig(key)
 			httpsvr.Net.Load(netp, "")
-			if httpp, err := IsYamlMap(server.Key("http")); err == nil {
+			if httpp, err := IsYamlMap(service.Key("http")); err == nil {
 				httpsvr.Http.Load(httpp)
 			}
 			c.HttpServers[key] = httpsvr
@@ -144,8 +161,47 @@ func (c *Config) Load(fname string) bool {
 		}
 		fmt.Println()
 	}
+	fmt.Println()
+
+	// Init HTTP upstreams
+	for _, svr := range c.HttpServers {
+		svr.Http.InitUpstream(c.UpStreams)
+	}
+	fmt.Println()
+	for _, svr := range c.TcpServers {
+		svr.Http.InitUpstream(c.UpStreams)
+	}
+	fmt.Println()
 
 	return true
+}
+
+// UPStream config
+type UPSConfig struct {
+	HttpServers []string
+	WsServers   []string
+}
+
+func NewUPSConfig() *UPSConfig {
+	return &UPSConfig{}
+}
+
+func (u *UPSConfig) LoadServers(node yaml.List) {
+	for _, s := range node {
+		if item, err := IsYamlMap(s); err == nil {
+			for k, v := range item {
+				switch k {
+				case "http":
+					u.HttpServers = append(u.HttpServers, IsYamlString(v))
+				case "ws":
+					u.WsServers = append(u.WsServers, IsYamlString(v))
+				default:
+					log.Warnln("[config] invalid upstream:", k)
+				}
+			}
+		}
+	}
+	log.Println("[config] upstream servers:", u)
 }
 
 // Net basic params
@@ -209,9 +265,10 @@ type UDPConfig struct {
 func NewTCPConfig(name string) *TCPConfig {
 	cfg := &TCPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
-	cfg.Http.HostRoutes = make(map[string]string)
-	cfg.Http.ProtoRoutes = make(map[string]string)
-	cfg.Http.Hijacks = make(map[string]string)
+	cfg.Http.Routes = make(map[string]*RouteTable)
+	cfg.Http.HostRoutes = make(map[string]*RouteTable)
+	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
+	cfg.Http.SessionRids = make(map[string]util.StringPair)
 	return cfg
 }
 
@@ -226,9 +283,10 @@ type TCPConfig struct {
 func NewHTTPConfig(name string) *HTTPConfig {
 	cfg := &HTTPConfig{Name: name}
 	cfg.Http = kDefaultHttpParams
-	cfg.Http.HostRoutes = make(map[string]string)
-	cfg.Http.ProtoRoutes = make(map[string]string)
-	cfg.Http.Hijacks = make(map[string]string)
+	cfg.Http.Routes = make(map[string]*RouteTable)
+	cfg.Http.HostRoutes = make(map[string]*RouteTable)
+	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
+	cfg.Http.SessionRids = make(map[string]util.StringPair)
 	return cfg
 }
 
@@ -252,14 +310,30 @@ var kDefaultHttpParams = HttpParams{
 	STSHeader:             STSHeader{},
 }
 
+type RouteTable struct {
+	Tag        string // backend tag
+	UpStreamId string // backend upstream
+	Paths      []util.StringPair
+	UpStream   *UPSConfig
+}
+
+func NewRouteTable(tag string) *RouteTable {
+	return &RouteTable{
+		Tag: tag,
+	}
+}
+
 // HttpParams for http configuration.
 type HttpParams struct {
-	Routes      []util.StringPair
-	HostRoutes  map[string]string // host@
-	ProtoRoutes map[string]string // ws@,..
-	Hijacks     map[string]string
+	Servername  string                 // server name
+	Root        string                 // static root dir
+	Routes      map[string]*RouteTable // all routes(upstream=>)
+	HostRoutes  map[string]*RouteTable // host routes
+	ProtoRoutes map[string]*RouteTable // proto routes
+	PathRoutes  []*RouteTable          // path routes
 
-	Root                  string        // static root dir
+	SessionRids map[string]util.StringPair // upstream by session rid
+
 	MaxConns              int           // max idle conns
 	IdleConnTimeout       time.Duration // the maximum amount of time an idle conn (keep-alive) connection
 	DialTimeout           time.Duration // the maximum amount of time a dial completes, system has around 3min
@@ -285,52 +359,121 @@ type STSHeader struct {
 
 // Load loads the http parameters(routes/hijacks/..) under a service.
 func (h *HttpParams) Load(node yaml.Map) {
+	h.Servername = IsYamlString(node.Key("servername"))
+	if len(h.Servername) == 0 {
+		h.Servername = "_"
+	}
+
 	h.Root = IsYamlString(node.Key("root"))
 	if len(h.Root) == 0 {
 		h.Root = "/tmp"
 	}
 
-	if routes, err := IsYamlList(node.Key("routes")); err == nil {
+	if routes, err := IsYamlMap(node.Key("routes")); err == nil {
 		h.loadHttpRoutes(routes)
 	}
-	if hijacks, err := IsYamlList(node.Key("hijacks")); err == nil {
-		h.loadHttpHijacks(hijacks)
-	}
-	log.Println("[config] http:", h)
+	log.Println("[config] http parameters:", h)
 }
 
-func (h *HttpParams) loadHttpRoutes(node yaml.List) {
+func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 	//log.Println("[config] load routes, ", node)
-	for _, r := range node {
-		if item, err := IsYamlMap(r); err == nil {
-			for k, v := range item {
-				//log.Println("[config] route=", k, v)
-				//log.Println(url.Parse(IsYamlString(v)))
-				if strings.HasPrefix(k, "host@") {
-					h.HostRoutes[k] = IsYamlString(v)
-				} else if strings.HasPrefix(k, "ws@") {
-					h.ProtoRoutes[k] = IsYamlString(v)
-				} else {
-					// keep route in-order
-					h.Routes = append(h.Routes, util.StringPair{k, IsYamlString(v)})
-				}
-			}
-		} else {
-			log.Warnln("[config] invalid route:", r)
+	for tag, v := range node {
+		item, err := IsYamlMap(v)
+		if err != nil {
+			log.Warnln("[config] http routes, invalid routes:", v)
+			break
 		}
+
+		// Create route table
+		table := NewRouteTable(tag)
+
+		// Process host/proto/path routes
+		for prop, v := range item {
+			switch prop {
+			case "upstream":
+				if _, err := IsYamlScalar(v); err == nil {
+					table.UpStreamId = IsYamlString(v)
+				} else {
+					log.Warn("[config] http routes, invalid upstream=", v)
+				}
+			case "hosts":
+				if hosts, err := IsYamlList(v); err == nil {
+					for _, host := range hosts {
+						h.HostRoutes[IsYamlString(host)] = table
+					}
+				} else {
+					log.Warn("[config] http routes, invalid hosts=", v)
+				}
+			case "protos":
+				if protos, err := IsYamlList(v); err == nil {
+					for _, proto := range protos {
+						h.ProtoRoutes[IsYamlString(proto)] = table
+					}
+				} else {
+					log.Warn("[config] http routes, invalid protos=", v)
+				}
+			case "paths":
+				if paths, err := IsYamlList(v); err == nil {
+					for _, path := range paths {
+						if _, err := IsYamlScalar(path); err == nil {
+							table.Paths = append(table.Paths, util.StringPair{IsYamlString(path), ""})
+						} else if pair, err := IsYamlMap(path); err == nil {
+							for k, v := range pair {
+								table.Paths = append(table.Paths, util.StringPair{k, IsYamlString(v)})
+							}
+						} else {
+							log.Warn("[config] http routes, invalid path=", path)
+						}
+					}
+					h.PathRoutes = append(h.PathRoutes, table)
+				} else {
+					log.Warn("[config] http routes, invalid paths=", v)
+				}
+			default:
+				log.Warn("[config] http routes, unsupported prop=", prop)
+			}
+		}
+
+		log.Println("[config] http routing:", table)
+		h.Routes[tag] = table
 	}
 }
 
-func (h *HttpParams) loadHttpHijacks(node yaml.List) {
-	for _, r := range node {
-		if item, err := IsYamlMap(r); err == nil {
-			for k, v := range item {
-				//log.Println("[config] hijack=", k, v)
-				h.Hijacks[k] = IsYamlString(v)
-			}
+func (h *HttpParams) InitUpstream(upstreams map[string]*UPSConfig) {
+	for _, table := range h.Routes {
+		if uri, err := url.Parse(table.UpStreamId); err != nil {
+			log.Fatal("[config] invalid upstreamId=", table.UpStreamId, err)
+			break
 		} else {
-			log.Warnln("[config] invalid hijack:", r)
+			if uri.Scheme != "http" && uri.Scheme != "https" {
+				log.Fatal("[config] only support http(s):// in upstream")
+				break
+			}
+
+			var host, port string
+			hostPort := strings.Split(uri.Host, ":")
+			if len(hostPort) > 2 {
+				log.Fatal("[config] invalid host in upstreamId=", table.UpStreamId)
+				break
+			} else if len(hostPort) == 2 {
+				host = hostPort[0]
+				port = hostPort[1]
+			} else {
+				host = hostPort[0]
+			}
+			if stream, ok := upstreams[host]; ok {
+				if len(port) > 0 {
+					log.Fatal("[config] upstreamId should not contain port:", table.UpStreamId)
+					break
+				}
+				table.UpStream = stream
+			} else {
+				// table.UpStreamId is a valid http host, not upstream
+				table.UpStream = nil
+			}
 		}
+
+		log.Println("[config] table upstream=", table)
 	}
 }
 

@@ -17,25 +17,26 @@ func NewCache() *Cache {
 }
 
 type CacheItem struct {
-	data    interface{}
-	misc    interface{}
-	timeout uint32
-	ctime   uint32
-	utime   uint32
+	data    interface{} // data
+	misc    interface{} // others
+	timeout uint32      // timeout, if 0 use default timeout
+	utime   uint32      // update time (last access time)
+	ctime   uint32      // create time
 }
 
 func NewCacheItem(data interface{}, timeout uint32) *CacheItem {
-	return &CacheItem{data: data, timeout: timeout, ctime: util.NowMs(), utime: util.NowMs()}
+	return &CacheItem{data: data, timeout: timeout, utime: util.NowMs(), ctime: util.NowMs()}
 }
 
 func NewCacheItemEx(data interface{}, misc interface{}, timeout uint32) *CacheItem {
-	return &CacheItem{data: data, misc: misc, timeout: timeout, ctime: util.NowMs(), utime: util.NowMs()}
+	return &CacheItem{data: data, misc: misc, timeout: timeout, utime: util.NowMs(), ctime: util.NowMs()}
 }
 
 func (h *Cache) Get(key string) *CacheItem {
 	h.RLock()
 	defer h.RUnlock()
 	if i, ok := h.items[key]; ok {
+		i.utime = util.NowMs()
 		return i
 	}
 	return nil
@@ -44,21 +45,22 @@ func (h *Cache) Get(key string) *CacheItem {
 func (h *Cache) Set(key string, item *CacheItem) {
 	h.Lock()
 	defer h.Unlock()
+	item.utime = util.NowMs()
 	h.items[key] = item
 }
 
 func (h *Cache) Update(key string) bool {
 	h.Lock()
 	defer h.Unlock()
-	if c, ok := h.items[key]; ok {
-		c.utime = util.NowMs()
+	if i, ok := h.items[key]; ok {
+		i.utime = util.NowMs()
 		return true
 	}
 	return false
 }
 
 func (h *Cache) ClearTimeout() {
-	const kMaxTimeout = 600 * 1000    // ms
+	// default 30s
 	const kDefaultTimeout = 30 * 1000 // ms
 
 	nowTime := util.NowMs()
@@ -66,7 +68,7 @@ func (h *Cache) ClearTimeout() {
 	h.RLock()
 	for k, v := range h.items {
 		timeout := v.timeout
-		if timeout == 0 || timeout > kMaxTimeout {
+		if timeout == 0 {
 			timeout = kDefaultTimeout
 		}
 		if nowTime >= v.utime+timeout {

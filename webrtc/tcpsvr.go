@@ -254,7 +254,7 @@ loopTcpRead:
 			log.Warnln("[tcp] tcp invalid body")
 			continue
 		}
-		log.Println("[tcp] tcp body size:", dsize)
+		//log.Println("[tcp] tcp body size:", dsize)
 
 		// read body packet
 		rpos := 0
@@ -279,7 +279,9 @@ loopTcpRead:
 }
 
 func (h *TcpHandler) writing() {
-	tickChan := time.NewTicker(time.Second * 5).C
+	raddrStr := "client"
+	//raddrStr := util.NetAddrString(h.conn.RemoteAddr())
+	tickChan := time.NewTicker(time.Second * 10).C
 	for {
 		select {
 		case msg, ok := <-h.chanRecv:
@@ -310,7 +312,7 @@ func (h *TcpHandler) writing() {
 				log.Warnln("[tcp] not-send invalid msg")
 			}
 		case <-tickChan:
-			log.Printf("[tcp] statistics, sendCount=%d, recvCount=%d\n", h.sendCount, h.recvCount)
+			log.Printf("[tcp] statistics[%s], sendCount=%d, recvCount=%d\n", raddrStr, h.sendCount, h.recvCount)
 		case <-h.exitTick:
 			close(h.exitTick)
 			log.Println("[tcp] tcp exit writing")

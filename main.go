@@ -4,8 +4,13 @@ import (
 	"os"
 
 	"github.com/PeterXu/xrtc/exit"
+	"github.com/PeterXu/xrtc/logging"
 	"github.com/PeterXu/xrtc/webrtc"
 )
+
+func init() {
+	logging.SetDefault()
+}
 
 func main() {
 	hub := webrtc.Inst()

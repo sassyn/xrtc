@@ -21,6 +21,9 @@ func (p *UmsProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 	if jreq, err := ParseUmsRequest(req.Data); err == nil {
 		offer := []byte(jreq.GetOffer())
 		//log.Println("[proto] ums-request offer: ", len(offer))
+		if len(offer) < 10 {
+			return nil, nil
+		}
 		return &ProtoResult{"offer", offer, nil}, nil
 	} else {
 		log.Warnln("[proto] ums-resquest error:", err)
@@ -34,6 +37,9 @@ func (p *UmsProto) parseResponse(resp *ProtoResponse) (*ProtoResult, error) {
 	if jresp, err := ParseUmsResponse(resp.Data); err == nil {
 		answer := []byte(jresp.GetAnswer())
 		//log.Println("[proto] ums-response answer: ", len(answer), string(answer))
+		if len(answer) < 10 {
+			return nil, nil
+		}
 		// Generate new response data(http body)
 		answer2 := util.UpdateSdpCandidates(answer, resp.Candidates)
 		jresp.SetAnswer(string(answer2))
@@ -58,7 +64,7 @@ func (r *UmsRequestJson) GetOffer() string {
 	log.Println("[json] ums request type:", r.Type, ", session:", r.Action.SessionKey)
 	user_roster := r.Action.UserRoster
 	if user_roster == nil || len(user_roster) == 0 {
-		log.Warnln("[json] ums no user_roster in json")
+		//log.Warnln("[json] ums no user_roster in json")
 		return ""
 	}
 
@@ -87,10 +93,10 @@ func EncodeUmsResponse(resp *UmsResponseJson) []byte {
 }
 
 func (r *UmsResponseJson) GetAnswer() string {
-	log.Println("[json] ums response code:", r.Code)
+	//log.Println("[json] ums response code:", r.Code)
 	user_roster := r.Action.UserRoster
 	if user_roster == nil || len(user_roster) == 0 {
-		log.Warnln("[json] ums no user_roster in json")
+		//log.Warnln("[json] ums no user_roster in json")
 		return ""
 	}
 
