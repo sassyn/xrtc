@@ -269,6 +269,7 @@ func NewTCPConfig(name string) *TCPConfig {
 	cfg.Http.HostRoutes = make(map[string]*RouteTable)
 	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
 	cfg.Http.SessionRids = make(map[string]util.StringPair)
+	cfg.Http.Cache = NewCache()
 	return cfg
 }
 
@@ -287,6 +288,7 @@ func NewHTTPConfig(name string) *HTTPConfig {
 	cfg.Http.HostRoutes = make(map[string]*RouteTable)
 	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
 	cfg.Http.SessionRids = make(map[string]util.StringPair)
+	cfg.Http.Cache = NewCache()
 	return cfg
 }
 
@@ -333,6 +335,7 @@ type HttpParams struct {
 	PathRoutes  []*RouteTable          // path routes
 
 	SessionRids map[string]util.StringPair // upstream by session rid
+	Cache       *Cache                     // session cache
 
 	MaxConns              int           // max idle conns
 	IdleConnTimeout       time.Duration // the maximum amount of time an idle conn (keep-alive) connection

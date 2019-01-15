@@ -230,7 +230,7 @@ type HTTPProxyHandler struct {
 
 	// Lookup returns a target host for the given request.
 	// The proxy will panic if this value is nil.
-	Lookup func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget
+	Lookup func(w http.ResponseWriter, r *http.Request) *RouteTarget
 
 	// UUID returns a unique id in uuid format.
 	// If UUID is nil, uuid.NewUUID() is used.
@@ -238,10 +238,9 @@ type HTTPProxyHandler struct {
 }
 
 func NewHTTPProxyHandle(cfg HttpParams,
-	lookup func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget) http.Handler {
+	lookup func(w http.ResponseWriter, r *http.Request) *RouteTarget) http.Handler {
 	return &HTTPProxyHandler{
 		Config:            cfg,
-		Cache:             NewCache(),
 		Transport:         newHTTPTransport(nil, cfg),
 		InsecureTransport: newHTTPTransport(&tls.Config{InsecureSkipVerify: true}, cfg),
 		Lookup:            lookup,
@@ -264,7 +263,7 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set(p.Config.RequestID, id())
 	}
 
-	t := p.Lookup(p, w, r)
+	t := p.Lookup(w, r)
 	//log.Println("[proxy] route lookup=", t)
 
 	if t == nil {
@@ -405,7 +404,7 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 	// Pass HttpParams object not by pointer
 	//  When http params changed, only applys to subsequent requests not old
-	return NewHTTPProxyHandle(*cfg, func(h *HTTPProxyHandler, w http.ResponseWriter, r *http.Request) *RouteTarget {
+	return NewHTTPProxyHandle(*cfg, func(w http.ResponseWriter, r *http.Request) *RouteTarget {
 		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
 
 		var hijack string
@@ -416,17 +415,15 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 		// check route by session rid
 		rid, err := sessionRoute(w, r)
 		if err == nil {
-			if item := h.Cache.Get(rid); item != nil {
+			rid = "rid_" + rid
+			if item := cfg.Cache.Get(rid); item != nil {
 				if rt, ok := item.data.(*util.StringPair); ok {
 					hijack = rt.First
 					routeUri = rt.Second
-					log.Println("[proxy] route by rid=", rid, routeUri, r.URL)
+					log.Println("[proxy] get route by rid=", rid, routeUri, r.URL)
 				}
 			}
 			//log.Println("[proxy] route by rid=", rid, routeUri, r.URL)
-		} else {
-			rid = routeId()
-			//log.Println("[proxy] route err by rid=", rid, routeUri, r.URL, err)
 		}
 
 		// check route from request
@@ -494,8 +491,27 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 
 			hijack = route.Tag
 
-			// store route
-			h.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
+			if hijack == "janus" {
+				paths := strings.Split(r.URL.Path, "/")
+				//log.Println("[proxy] split path=", len(paths), paths, r.URL)
+				if len(paths) >= 3 && paths[1] == "janus" {
+					jid := "jid_" + paths[2]
+					if item := cfg.Cache.Get(jid); item != nil {
+						if rt, ok := item.data.(*util.StringPair); ok {
+							hijack = rt.First
+							routeUri = rt.Second
+							//log.Println("[proxy] get route by jid=", jid, routeUri)
+						}
+					} else {
+						// sotre route by jid
+						log.Println("[proxy] store route by jid=", jid, routeUri)
+						cfg.Cache.Set(jid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
+					}
+				}
+			}
+
+			// store route by rid
+			cfg.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
 		}
 
 		// check routeUri is valid
@@ -505,7 +521,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			return nil
 		}
 
-		log.Println("[proxy] route hijack-tag=", hijack, ", routeUri=", routeUri, ", reqUri=", r.URL)
+		//log.Println("[proxy] route hijack-tag=", hijack, ", routeUri=", routeUri, ", reqUri=", r.URL)
 
 		return &RouteTarget{
 			Service:       name,

@@ -16,6 +16,9 @@ build:
 clean:
 	@go clean
 
+check:
+	@PKG_CONFIG_PATH=/usr/local/lib/pkgconfig go get -u
+
 run: build
 	@go run main.go
 
@@ -23,7 +26,8 @@ docker: build
 	docker build -t $(NS)/$(REPO):$(VERSION) -f testing/Dockerfile .
 
 deploy: 
-	docker-compose -f testing/docker-compose.yml up -d
+	@export host_ip=$(HOST_IP) && \
+		docker-compose -f testing/docker-compose.yml up -d
 
 docker-build:
 	@test "$(OS)" = "Linux"

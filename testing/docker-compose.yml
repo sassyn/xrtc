@@ -13,3 +13,5 @@ services:
     network_mode: default
     external_links:
       - janus-gateway:janus_api
+    extra_hosts:
+      - "host_ip:${host_ip}"
