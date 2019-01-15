@@ -65,7 +65,7 @@ services:
     udpsvr1:
         proto: udp
         net:
-            enable: false
+            enable: true
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key

@@ -104,6 +104,10 @@ func (c *Connection) onRecvData(data []byte) {
 			// init and enable srtp
 			c.hadStunBindingResponse = true
 			c.ready = true
+		case util.STUN_BINDING_ERROR_RESPONSE:
+			log.Warnln("[conn] error stun message")
+		default:
+			log.Warnln("[conn] unknown stun message=", msg.Dtype)
 		}
 	} else {
 		// dtls handshake
@@ -126,6 +130,7 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 	xorAttr := &util.StunXorAddressAttribute{}
 	xorAttr.SetType(util.STUN_ATTR_XOR_MAPPED_ADDRESS)
 	xorAttr.Addr.SetAddr(c.addr)
+
 	resp.AddAttribute(xorAttr)
 	resp.AddMessageIntegrity(c.sendPasswd)
 	resp.AddFingerprint()

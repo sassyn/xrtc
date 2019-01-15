@@ -127,11 +127,12 @@ func NewStunMessageResponse(transId string) *StunMessage {
 // appropriate class (see above).  The Get* methods will return instances of
 // that attribute class.
 type StunMessage struct {
-	Dtype   StunMessageType
-	Length  uint16
-	Magic   uint32
-	TransId string
-	Attrs   map[StunAttributeType]StunAttribute
+	Dtype      StunMessageType
+	Length     uint16
+	Magic      uint32
+	TransId    string
+	Attrs      map[StunAttributeType]StunAttribute
+	OrderAttrs []StunAttribute
 }
 
 // IceMessage is A RFC 5245 ICE STUN message.
@@ -224,6 +225,8 @@ func (m *StunMessage) Read(data []byte) bool {
 			attr = &StunXorAddressAttribute{}
 		case STUN_ATTR_USERNAME:
 			attr = &StunByteStringAttribute{}
+		case STUN_ATTR_ERROR_CODE:
+			attr = &StunErrorCodeAttribute{}
 		//case STUN_ATTR_MESSAGE_INTEGRITY:
 		//case STUN_ATTR_FINGERPRINT:
 		//case STUN_ATTR_PRIORITY:
@@ -244,6 +247,7 @@ func (m *StunMessage) Read(data []byte) bool {
 			attr.SetInfo(attrType, attrLen, m.TransId)
 			attr.Read(buf)
 			m.Attrs[attrType] = attr
+			m.OrderAttrs = append(m.OrderAttrs, attr)
 		}
 	}
 
@@ -270,7 +274,7 @@ func (m *StunMessage) Write(buf *bytes.Buffer) bool {
 	// STUN_ATTR_USERNAME: 2+2+username
 	// STUN_ATTR_MESSAGE_INTEGRITY: 2+2+20
 	// STUN_ATTR_FINGERPRINT: 2+2+4
-	for _, attr := range m.Attrs {
+	for _, attr := range m.OrderAttrs {
 		// 2bytes attr type
 		WriteBig(buf, attr.GetType())
 		// 2bytes attr len
@@ -330,6 +334,7 @@ func (m *StunMessage) AddAttribute(attr StunAttribute) {
 		m.Attrs = make(map[StunAttributeType]StunAttribute)
 	}
 	m.Attrs[attr.GetType()] = attr
+	m.OrderAttrs = append(m.OrderAttrs, attr)
 	attr_length := attr.GetLen2()
 	if (attr_length % 4) != 0 {
 		attr_length += (4 - (attr_length % 4))
@@ -356,19 +361,25 @@ func (m *StunMessage) AddMessageIntegrity(key string) bool {
 
 	attrLen := int(integrityAttr.GetLen2())
 	msg_len_for_hmac := buf.Len() - kStunAttributeHeaderSize - attrLen
+
 	macFunc := hmac.New(sha1.New, []byte(key))
 	macFunc.Write(buf.Bytes()[0:msg_len_for_hmac])
 	digest := macFunc.Sum(nil)
+
 	//log.Printf("[ice] hmac bufLen=%d, attrLen=%d, msglen=%d, digestlen=%d\n",
 	//	buf.Len(), attrLen, msg_len_for_hmac, len(digest))
 	if len(digest) != kStunMessageIntegritySize {
-		log.Warnln("[ice] hmac digest wrong, len=", len(digest))
+		log.Warnln("[ice] hmac digest wrong, len=", len(digest), string(digest))
 		return false
 	}
-	//log.Println("[ice] hmac digest, len=", len(digest))
+	//log.Println("[ice] go hmac digest, len=", len(digest), digest)
 	integrityAttr.CopyBytes(digest)
 
 	return true
+}
+
+func (m *StunMessage) ValidateMessageIntegrity() bool {
+	return false
 }
 
 // AddFingerprint Adds a FINGERPRINT attribute that is valid for the current message.
@@ -385,11 +396,12 @@ func (m *StunMessage) AddFingerprint() bool {
 
 	attrLen := int(fingerprinAttr.GetLen2())
 	msg_len_for_crc32 := buf.Len() - kStunAttributeHeaderSize - attrLen
+
 	const kCrc32Polynomial uint32 = 0xEDB88320
 	crc32q := crc32.MakeTable(kCrc32Polynomial)
 	crc := crc32.Checksum(buf.Bytes()[0:msg_len_for_crc32], crc32q)
-	//log.Printf("[ice] fp, buflen=%d, attrLen=%d, msglen=%d, crc=%d\n",
-	//	buf.Len(), attrLen, msg_len_for_crc32, crc)
+	//log.Println("[ice] go stun crc32=", crc, msg_len_for_crc32, buf.Len())
+
 	fingerprinAttr.SetValue(crc ^ STUN_FINGERPRINT_XOR_VALUE)
 	return true
 }
@@ -594,13 +606,18 @@ func (a *StunXorAddressAttribute) Write(buf *bytes.Buffer) bool {
 		log.Warnln("[ice] invalid addr family in xoraddr")
 		return false
 	}
+
 	var zero uint8 = 0
+	// 1byte
 	WriteBig(buf, zero)
+	// 1byte
 	WriteBig(buf, a.Addr.family)
 
 	a.XorPort = a.Addr.port ^ uint16(kStunMagicCookie>>16)
 	a.GetXoredIP()
+	// 2bytes
 	WriteBig(buf, a.XorPort)
+	// 4bytes
 	WriteBig(buf, a.XorIP)
 	return true
 }
@@ -608,11 +625,11 @@ func (a *StunXorAddressAttribute) Write(buf *bytes.Buffer) bool {
 func (a *StunXorAddressAttribute) GetXoredIP() {
 	magic := HostToNet32(kStunMagicCookie)
 	if a.Addr.family == STUN_ADDRESS_IPV4 {
-		a.XorIP = make([]byte, 4)
-		dst := (*[1]uint32)(unsafe.Pointer(&a.XorIP[0]))[:]
-		ipv4 := (*[1]uint32)(unsafe.Pointer(&a.Addr.ip[0]))[:]
-		dst[0] = ipv4[0] ^ magic
+		ip32 := HostToNet32(BytesToUint32(a.Addr.ip.To4()))
+		xorip := Uint32ToBytes(ip32 ^ magic)
+		a.XorIP = xorip
 	} else if a.Addr.family == STUN_ADDRESS_IPV6 {
+		//TODO
 		a.XorIP = make([]byte, 20)
 		if len(a.Addr.transId) == kStunTransactionIdLength {
 			var transIds [3]uint32
@@ -670,10 +687,7 @@ func (a *StunByteStringAttribute) Write(buf *bytes.Buffer) bool {
 }
 
 func (a *StunByteStringAttribute) CopyBytes(data []byte) {
-	if len(a.Data) != len(data) {
-		a.Data = make([]byte, len(data))
-	}
-	copy(a.Data[0:], data)
+	a.Data = data
 }
 
 // StunUInt32Attribute implements STUN attributes that record a 32-bit integer.
@@ -712,6 +726,63 @@ func (a *StunUInt32Attribute) Read(buf *bytes.Reader) bool {
 func (a *StunUInt32Attribute) Write(buf *bytes.Buffer) bool {
 	WriteBig(buf, a.bits)
 	return true
+}
+
+// Implements STUN attributes that record an error code.
+// MIN_SIZE = 4
+type StunErrorCodeAttribute struct {
+	StunAttributeBase
+	Class  uint8
+	Number uint8
+	Reason string
+}
+
+func (a *StunErrorCodeAttribute) Read(buf *bytes.Reader) bool {
+	if buf.Len() < 4 {
+		return false
+	}
+
+	reasonLen := buf.Len() - 4
+
+	var val uint32
+	if ReadBig(buf, &val) != nil {
+		log.Warnln("[ice] fail to read 4-bytes in error-code")
+		return false
+	}
+
+	if (val >> 11) != 0 {
+		log.Warnln("[ice] error-code bits not zero")
+	}
+
+	a.Class = uint8((val >> 8) & 0x7)
+	a.Number = uint8(val & 0xff)
+	if reasonLen > 0 {
+		data := make([]byte, reasonLen)
+		if _, err := buf.Read(data); err != nil {
+			log.Warnln("[ice] fail to read error-reason:", err)
+			return false
+		}
+		a.Reason = string(data)
+	}
+	//log.Println("[ice] read error-code:", a)
+	return true
+}
+
+func (a *StunErrorCodeAttribute) Write(buf *bytes.Buffer) bool {
+	return false
+}
+
+func (a *StunErrorCodeAttribute) Code() int {
+	return int(a.Class*100) + int(a.Number)
+}
+
+func (a *StunErrorCodeAttribute) SetCode(code int) {
+	a.Class = uint8(code / 100)
+	a.Number = uint8(code % 100)
+}
+
+func (a *StunErrorCodeAttribute) SetReason(reason string) {
+	a.Reason = reason
 }
 
 // The packet length of dtls/rtp/rtcp

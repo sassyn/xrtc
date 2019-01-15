@@ -3,6 +3,7 @@ package webrtc
 import (
 	"bytes"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -262,8 +263,11 @@ loopTcpRead:
 			need := int(dsize) - rpos
 			if nret, err := h.conn.Read(rbuf[rpos : rpos+need]); err != nil {
 				log.Warnln("[tcp] tcp error reading:", err)
-				quit = true
-				break loopTcpRead
+				if err == io.EOF {
+					quit = true
+					break loopTcpRead
+				}
+				continue
 			} else {
 				rpos += nret
 				h.recvCount += nret
