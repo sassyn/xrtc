@@ -178,8 +178,13 @@ func (s *Service) iceLoop(retCh chan error) {
 	var tcpCands []util.Candidate
 	var udpCands []util.Candidate
 	for _, cand := range s.iceCands {
+		if cand.CandType != "typ host" {
+			continue
+		}
 		if cand.Transport == "tcp" {
-			tcpCands = append(tcpCands, cand)
+			if cand.NetType == "tcptype passive" {
+				tcpCands = append(tcpCands, cand)
+			}
 		} else {
 			udpCands = append(udpCands, cand)
 		}

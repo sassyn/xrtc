@@ -307,10 +307,10 @@ var kDefaultHttpParams = HttpParams{
 	MaxConns:              100,
 	IdleConnTimeout:       time.Second * 30,
 	DialTimeout:           time.Second * 10,
-	ResponseHeaderTimeout: time.Second * 30,
+	ResponseHeaderTimeout: time.Second * 300,
 	KeepAliveTimeout:      time.Second * 1200,
-	GlobalFlushInterval:   time.Millisecond * 10,
-	FlushInterval:         time.Millisecond * 10,
+	GlobalFlushInterval:   time.Millisecond * 100,
+	FlushInterval:         time.Millisecond * 100,
 	RequestID:             "X-Request-Id",
 	STSHeader:             STSHeader{},
 }

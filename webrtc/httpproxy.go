@@ -114,12 +114,14 @@ func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flu
 			req.URL.Host = target.Host
 			req.URL.Path = target.Path
 			req.URL.RawQuery = target.RawQuery
+
 			if _, ok := req.Header["User-Agent"]; !ok {
 				// explicitly disable User-Agent so it's not set to default value
 				req.Header.Set("User-Agent", "")
 			}
 
-			if req.Method != http.MethodPost || req.ContentLength <= 0 {
+			if req.Method != http.MethodPost || req.ContentLength <= 10 {
+				//log.Warnln("[proxy] req status:", req.Method, req.ContentLength, req.URL)
 				return
 			}
 
@@ -147,7 +149,8 @@ func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flu
 		FlushInterval: flush,
 		Transport:     tr,
 		ModifyResponse: func(resp *http.Response) error {
-			if resp.StatusCode != http.StatusOK || resp.ContentLength <= 0 {
+			if resp.StatusCode != http.StatusOK || resp.ContentLength <= 10 {
+				log.Println("[proxy] resp status:", resp.StatusCode, resp.ContentLength)
 				return nil
 			}
 
@@ -424,11 +427,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 		var hijack, routeUri string
 		var iceTcp, iceDirect bool
 
-		hostname, _, err := net.SplitHostPort(r.Host)
-		if err != nil {
-			log.Warnln("[proxy] invalid host:", r.Host, err)
-			return nil
-		}
+		hostname := strings.Split(r.Host, ":")[0]
 
 		// check default host
 		if cfg.Servername != kDefaultServerName {
@@ -527,7 +526,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 				cfg.Cache.Set(rid, NewCacheItemEx(&util.StringPair{hijack, routeUri}, 600*1000))
 			}
 
-			if hijack == "janus" {
+			if hijack == "janus0" {
 				paths := strings.Split(r.URL.Path, "/")
 				//log.Println("[proxy] split path=", len(paths), paths, r.URL)
 				if len(paths) >= 3 && paths[1] == "janus" {

@@ -24,6 +24,9 @@ func (p *JanusProto) parseRequest(req *ProtoRequest) (*ProtoResult, error) {
 			//log.Println("[proto] janus-request offer:", len(offer), string(offer))
 			// NOTE: donot required to update request
 			return &ProtoResult{"offer", offer, nil}, nil
+		} else if jreq.Janus == kJanusTrickle {
+			//log.Println("[proto] janus-request candidate:", string(req.Data))
+			return nil, nil
 		} else {
 			//log.Println("[proto] janus-request:", jresp.Janus)
 			return nil, nil

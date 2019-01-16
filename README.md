@@ -174,6 +174,8 @@ services:
       routes:
         janus:
           upstream: http://upstream_janus1
+          icetcp: true
+          icedirect: true
           hosts: 
             - janus.zenvv.com
           protos:
@@ -229,7 +231,7 @@ The server's fields contains:
 		* ***upstream***: a seperate uri or previous upstream group.
 		* ***icetcp***: xRTC connects WebRTC server with TCP in high-priority.
 		* ***icedirect***: xRTC forwards all ice-data between client and server.
-		* ***hosts***: hostname matching if `servername: _`
+		* ***hosts***: hostname matching if `servername` is none or "_".
 		* ***protos***: websocket matching, e.g. `var ws = WebSocket("wss://..", "protocol_name");`
 		* ***paths***: path matching, now only support prefix-matching
 
