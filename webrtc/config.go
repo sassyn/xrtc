@@ -120,7 +120,7 @@ func (c *Config) Load(fname string) bool {
 			}
 
 			ups := NewUPSConfig()
-			ups.LoadServers(servers)
+			ups.Load(servers)
 			c.UpStreams[key] = ups
 			fmt.Println()
 			continue
@@ -186,19 +186,24 @@ func NewUPSConfig() *UPSConfig {
 	return &UPSConfig{}
 }
 
-func (u *UPSConfig) LoadServers(node yaml.List) {
+func (u *UPSConfig) Load(node yaml.List) {
 	for _, s := range node {
-		if item, err := IsYamlMap(s); err == nil {
-			for k, v := range item {
-				switch k {
-				case "http":
-					u.HttpServers = append(u.HttpServers, IsYamlString(v))
-				case "ws":
-					u.WsServers = append(u.WsServers, IsYamlString(v))
+		if _, err := IsYamlScalar(s); err == nil {
+			svr := IsYamlString(s)
+			if uri, err := url.Parse(svr); err == nil {
+				switch {
+				case uri.Scheme == "http" || uri.Scheme == "https":
+					u.HttpServers = append(u.HttpServers, svr)
+				case uri.Scheme == "ws" || uri.Scheme == "wss":
+					u.WsServers = append(u.WsServers, svr)
 				default:
-					log.Warnln("[config] invalid upstream:", k)
+					log.Warnln("[config] invalid upstream:", svr)
 				}
+			} else {
+				log.Warnln("[config] invalid upstream uri:", svr, err)
 			}
+		} else {
+			log.Warnln("[config] invalid upstream svr:", s, err)
 		}
 	}
 	log.Println("[config] upstream servers:", u)
@@ -324,6 +329,8 @@ func NewRouteTable(tag string) *RouteTable {
 		Tag: tag,
 	}
 }
+
+const kDefaultServerName = "_"
 
 // HttpParams for http configuration.
 type HttpParams struct {

@@ -8,6 +8,7 @@
 - [x] Serve as HTTP static server.
 - [x] Serve as an extendable node of WebRTC server.
 - [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
+- [x] Support `upstream` config like nginx (partial).
 
 
 <br>
@@ -15,7 +16,6 @@
 # TODO
 
 - [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
-- [ ] Full HTTP/WebRTC dynamic routing by Conference Id (one proxy to multi-WebRTC servers: `upstream`).
 - [ ] Transparent WebRTC routing(`ice_direct`) between client and WebRTC server.
 - [ ] Jitsi WebRTC server support
 
@@ -78,15 +78,22 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 ```
 
 
-> Step1: Parse offer of REST request from WebRTC client.
+> ***Step1***: Parse offer of REST request from WebRTC client.  
+> 		xRTC parses send-ice-ufrag/pwd from offer.
 > 
-> Step2: Parse answer of REST response from WebRTC client.
+> ***Step2***: Parse answer of REST response from WebRTC client.  
+>		xRTC parses recv-ice-ufrag/pwd from answer.  
 > 
-> Step3: Build and maintain ice connection0 between WebRTC client and xRTC.
+> ***Step3***: Build and maintain ice connection0 between WebRTC client and xRTC.  
+> 		xRTC makes use of recv-ice-ufrag/pwd to accept connection from client.   
+> 		xRTC candidates are passive-only-mode and consisted of `host_ip` & `udp/tcp server port` in config.
 > 
-> Step4: Build and maintain ice connection1 between xRTC and WebRTC server.
+> ***Step4***: Build and maintain ice connection1 between xRTC and WebRTC server.  
+> 		xRTC makes use of send-ice-ufrag/pwd to build connection to server.   
+> 		xRTC candidates are passive/active-mode with WebRTC servers.
 > 
-> Step5: Forward dtls/sctp/srtp/srtcp data between WebRTC client and WebRTC server.
+> ***Step5***: Forward dtls/sctp/srtp/srtcp data between WebRTC client and WebRTC server.  
+> 		xRTC only forwards these packets between client and server.
 
 
 <br>
@@ -99,8 +106,11 @@ The root node is `services` and its structure:
 
 ```yaml
 services:
-  servername:
-    proto: http/tcp/udp
+  servicename:
+    proto: http/tcp/udp/upstream
+    servers:
+      - http://janus_api:8088
+      - ws://janus_api:8188
     net:
       enable: true
       addr: :6443
@@ -110,53 +120,67 @@ services:
         - host_ip
     enable_http: true
     http:
+      servername: _
       root: /tmp/html
-      hijacks:
-        - host@janus.zenvv.com: janus
-        - ws@janus-protocol:    janus
-        - /janus:               janus
       routes:
-        - host@janus.zenvv.com: http://janus_api:8088
-        - ws@janus-protocol:    ws://janus_api:8188
-        - /janus:               http://janus_api:8088
+        janus:
+          upstream: http://upstream_janus1
+          hosts: 
+            - janus.zenvv.com
+          protos:
+            - ws@janus-protocol
+          paths:
+            - /janus
+        default:
+          upstream: http://html_api:8080
+          paths:
+            - /index
 ```
 
-Each service is a server (servername), e.g. udp ice server, tcp ice server, http/ws reverse-proxy server.
+Each service is a function(servicename), e.g. udp ice server, tcp ice server, http/ws reverse-proxy server or upstream group.
 
 The server's fields contains:
 
-1. ***proto***: *http/tcp/udp*  
+1. ***proto***: *http/tcp/udp/upstream*  
 	*http* is a HTTP static or HTTP-RP(http/ws reverse proxy) server,  
 	*tcp* is a WebRTC-ICE-TCP or HTTP-RP server,  
-	*udp* is a WebRTC-ICE-UDP server,
+	*udp* is a WebRTC-ICE-UDP server,  
+	*upstream* is a upstream group,
+
+2. ***servers***: only valid for `proto: upstream`   
+	Each server should be: "http/https/ws/wss://host[:port]",   
+	like nginx upstream. 
 	
-2. ***net***: network config
+3. ***net***: network config, only valid for `proto:udp/tcp/http`
 	* ***enable***: *true/false*
 	* ***addr***: server listen address, format: "*ip:port*"
 	* ***tls\_crt\_file***: local crt file(openssl)
 	* ***tls\_key\_file***: local key file(openssl)
 	* ***ips***: server ICE candidate ip address.
 	
-	The `enable` is only valid for `proto:udp/tcp`, ICE candidates.
+	The `enable` is only valid for `proto:udp/tcp`, for ICE candidates.
 	
 	The `tls_crt_file/tls_key_file` is only valid for `proto:udp/tcp`.
 	
-	The `ips` is only valid for `proto: udp/tcp`, ICE candidates.
+	The `ips` is only valid for `proto: udp/tcp`, IP of xrtc ICE candidates.
 
 	if `enable` is true, xRTC's candidates are constructed by `ips` and port of `addr`.
 	
 	if no valid tls key/crt, http(ws) enabled, otherwise both http(ws) and https(wss) are enabled.
 	
-3. ***http***: HTTP server config
-	* ***root***: HTTP static directory for no-routing http request.
-	* ***hijacks***: HTTP-RP tags for which server(Janus/Jitsi), like *routes*.
-	* ***routes***: HTTP-RP routing rules with priority desc....
-		* hostname matching: "*host@...*"
-		* websocket protocol matching: "*ws@...*", e.g. `var ws = WebSocket("wss://..", "protocol_name");`
-		* path matching, now only support prefix-matching.
-
 4. ***enable_http***: *true/false*, only valid for `proto: tcp`.  
-	when *enable_http* is true and current service is a tcp server, then it can also act as a full HTTP-RP server. 
+	when *enable_http* is true and current service is a tcp server, then it also act as a full HTTP-RP server. 
+	
+5. ***http***: HTTP server config
+	* ***servername***: HTTP server name, default "_" for any.  
+		if not "_", only matched request will be processsed, like nginx. 
+	* ***root***: HTTP static directory for no-routing http request.
+	* ***routes***: HTTP-RP routing rules with priority desc....  
+		Each group is a hijack tag for which kind of route, e.g. `janus/default`.  
+		* ***upstream***: a seperate uri or previous upstream group.
+		* ***hosts***: hostname matching if `servername: _`
+		* ***protos***: websocket matching, e.g. `var ws = WebSocket("wss://..", "protocol_name");`
+		* ***paths***: path matching, now only support prefix-matching
 
 
 <br>

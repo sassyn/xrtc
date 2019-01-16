@@ -2,15 +2,15 @@ services:
     upstream_janus1:
         proto: upstream
         servers:
-            - http: http://janus_api:8088
-            - ws: ws://janus_api:8188
+            - http://janus_api:8088
+            - ws://janus_api:8188
 
     upstream_ums1:
         proto: upstream
         servers:
-            - http: https://ums_api
-            - ws: wss://ums_api
-            - ws: wss://ums_api_backup
+            - https://ums_api
+            - wss://ums_api
+            - wss://ums_api_backup
 
     httpsvr1:
         proto: http

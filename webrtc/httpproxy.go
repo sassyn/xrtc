@@ -410,9 +410,24 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 		var hijack string
 		var routeUri string
 
+		hostname, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			log.Warnln("[proxy] invalid host:", r.Host, err)
+			return nil
+		}
+
+		// check default host
+		if cfg.Servername != kDefaultServerName {
+			if cfg.Servername != hostname {
+				log.Warnln("[proxy] not matching servername:", cfg.Servername, r.Host)
+				return nil
+			}
+		}
+
+		// request scheme
 		sch := scheme(r)
 
-		// check route by session rid
+		// Check session and cache, route by session rid
 		rid, err := sessionRoute(w, r)
 		if err == nil {
 			rid = "rid_" + rid
@@ -424,19 +439,19 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 				}
 			}
 			//log.Println("[proxy] route by rid=", rid, routeUri, r.URL)
+		} else {
+			log.Warnln("[proxy] fail to create session:", r.URL, err)
 		}
 
-		// check route from request
 		if len(routeUri) == 0 {
+			// check route from request
 			var route *RouteTable
 			for {
-				// check host
-				if host, _, err := net.SplitHostPort(r.Host); err == nil {
-					//log.Println("[proxy] route check host=", host)
-					if rt, ok := cfg.HostRoutes[host]; ok {
-						route = rt
-						break
-					}
+				// check matching host
+				//log.Println("[proxy] route check host=", hostname)
+				if rt, ok := cfg.HostRoutes[hostname]; ok {
+					route = rt
+					break
 				}
 
 				// check ws@
@@ -466,10 +481,11 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 				return nil
 			}
 
-			// check upstream uri
 			if route.UpStream == nil {
+				// use a seperate host not upstream
 				routeUri = route.UpStreamId
 			} else {
+				// choose a upstream random
 				switch {
 				case sch == "http" || sch == "https":
 					for _, v := range route.UpStream.HttpServers {
@@ -490,6 +506,10 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			}
 
 			hijack = route.Tag
+			if len(rid) > 0 {
+				// store route by rid
+				cfg.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
+			}
 
 			if hijack == "janus" {
 				paths := strings.Split(r.URL.Path, "/")
@@ -509,9 +529,6 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 					}
 				}
 			}
-
-			// store route by rid
-			cfg.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
 		}
 
 		// check routeUri is valid
