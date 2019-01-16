@@ -29,6 +29,10 @@ deploy:
 	@export host_ip=$(HOST_IP) && \
 		docker-compose -f testing/docker-compose.yml up -d
 
+docker-pull:
+	@docker pull peterxu/docker-xrtc:latest
+	@docker pull peterxu/docker-xrtc-build:latest
+
 docker-build:
 	@test "$(OS)" = "Linux"
 	@(cp -rf /usr/local/include testing/include)

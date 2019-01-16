@@ -187,6 +187,19 @@ The server's fields contains:
 
 ## 4. Build & Run
 
+Simply building for all platforms which support docker:
+    
+```
+$> make docker-pull
+$> make docker-mac
+$> make deploy-mac
+```
+
+<br>
+
+If you want to build completely, following steps as:
+
+
 1. Library dependency
 	
 	libffi, libuuid, glib2, libnice, gnutls, openssl
@@ -208,7 +221,7 @@ The server's fields contains:
 	
 4. Docker Build for CentOS-7
 	
-	This only works when Step-2 are successful in CentOS-7.
+	This only works when Step-3 are successful in CentOS-7.
 	
 	1). Build and Deploy
 	
