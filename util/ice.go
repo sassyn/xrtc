@@ -162,7 +162,8 @@ func (m *StunMessage) Read(data []byte) bool {
 	ReadBig(buf, &m.Dtype)
 	//log.Println("[ice] message type=", m.Dtype)
 	if (m.Dtype & 0x8000) != 0 {
-		// RTP and RTCP
+		// RTP and RTCP set the MSB of first byte, since first two bits are version,
+		// and version is always 2 (10). If set, this is not a STUN packet.
 		log.Warnln("[ice] not stun message, (RTP/RTCP)type=", m.Dtype)
 		return false
 	}
@@ -177,6 +178,7 @@ func (m *StunMessage) Read(data []byte) bool {
 
 	// 4-8, read stun magic
 	ReadBig(buf, &m.Magic)
+	//log.Println("[ice] read magic:", m.Magic, kStunMagicCookie)
 
 	// 8-20, read stun transaction id
 	var transId [kStunTransactionIdLength]byte
@@ -192,12 +194,13 @@ func (m *StunMessage) Read(data []byte) bool {
 	} else {
 		m.TransId = string(transId[:])
 	}
-	//log.Printf("[ice] message magic=%x, transId=%s\n", m.Magic, m.TransId)
+	// kStunTransactionIdLength/kStunLegacyTransactionIdLength
+	//log.Printf("[ice] message magic=%x, transId=%s_%d\n", m.Magic, m.TransId, len(m.TransId))
 
 	if int(m.Length) != buf.Len() {
 		// TODO: length= 80 , Len= 696
 		// invalid length= 108 , Len= 31
-		log.Warnln("[ice] invalid length=", m.Length, ", Len=", buf.Len())
+		log.Warnln("[ice] invalid length=", m.Length, ", Len=", buf.Len(), len(data), m.TransId)
 		return false
 	}
 
@@ -785,6 +788,31 @@ func (a *StunErrorCodeAttribute) SetReason(reason string) {
 	a.Reason = reason
 }
 
+// GenStunMessageRequest generates stun request packet
+func GenStunMessageRequest(buf *bytes.Buffer, sendUfrag, recvUfrag, recvPwd string) bool {
+	sendKey := recvUfrag + ":" + sendUfrag
+	usernameAttr := NewStunByteStringAttribute(STUN_ATTR_USERNAME, []byte(sendKey))
+
+	req := NewStunMessageRequest()
+	req.AddAttribute(usernameAttr)
+	req.AddMessageIntegrity(recvPwd)
+	req.AddFingerprint()
+	return req.Write(buf)
+}
+
+// GenStunMessageResponse generates stun response packet
+func GenStunMessageResponse(buf *bytes.Buffer, passwd string, transId string, addr net.Addr) bool {
+	xorAttr := &StunXorAddressAttribute{}
+	xorAttr.SetType(STUN_ATTR_XOR_MAPPED_ADDRESS)
+	xorAttr.Addr.SetAddr(addr)
+
+	resp := NewStunMessageResponse(transId)
+	resp.AddAttribute(xorAttr)
+	resp.AddMessageIntegrity(passwd)
+	resp.AddFingerprint()
+	return resp.Write(buf)
+}
+
 // The packet length of dtls/rtp/rtcp
 const (
 	kDtlsRecordHeaderLen int = 13
@@ -838,7 +866,7 @@ func IsStunPacket(data []byte) bool {
 		return false
 	}
 
-	if data[0] != 0 && data[0] != 1 {
+	if int(data[0]) != 0 && int(data[0]) != 1 {
 		return false
 	}
 
@@ -861,6 +889,7 @@ func IsStunPacket(data []byte) bool {
 	var magic uint32
 	binary.Read(buf, binary.BigEndian, &magic)
 	if magic != kStunMagicCookie {
+		//log.Warnln("[ice] check: ", magic, kStunMagicCookie)
 		// If magic cookie is invalid, only support RFC5389, not including RFC3489
 		return false
 	}

@@ -59,13 +59,15 @@ func (u *UdpServer) Run() {
 	// write goroutine
 	go u.writing()
 
-	buf := make([]byte, kMaxPacketSize)
 	sendChan := u.hub.ChanRecvFromOuter()
+	rbuf := make([]byte, kMaxPacketSize)
 	for {
-		if nret, raddr, err := u.conn.ReadFromUDP(buf[0:]); err == nil {
+		if nret, raddr, err := u.conn.ReadFromUDP(rbuf[0:]); err == nil {
 			//log.Println("[udp] recv msg size: ", nret, ", from ", NetAddrString(raddr))
 			u.recvCount += nret
-			sendChan <- NewHubMessage(buf[0:nret], raddr, nil, u.chanRecv)
+			data := make([]byte, nret)
+			copy(data, rbuf[0:nret])
+			sendChan <- NewHubMessage(data, raddr, nil, u.chanRecv)
 		} else {
 			log.Warnln("[udp] read udp error: ", err, ", remote: ", raddr)
 			break

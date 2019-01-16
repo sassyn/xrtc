@@ -16,16 +16,10 @@ type Connection struct {
 	chanSend chan interface{}
 	user     *User
 
-	sendUfrag  string
-	sendPasswd string
-	recvUfrag  string
-	recvPasswd string
-
 	ready                  bool
 	stunRequesting         uint32
 	hadStunChecking        bool
 	hadStunBindingResponse bool
-	bindError              int
 	leave                  bool
 
 	utime uint32 // update time
@@ -37,31 +31,12 @@ func NewConnection(addr net.Addr, chanSend chan interface{}) *Connection {
 	c.ready = false
 	c.hadStunChecking = false
 	c.hadStunBindingResponse = false
-	c.bindError = 0
 	c.leave = false
 	return c
 }
 
-func (c *Connection) setSendIce(ufrag, pwd string) {
-	// parsed from answer
-	c.sendUfrag = ufrag
-	c.sendPasswd = pwd
-	log.Println("[conn] send ice: ", ufrag, pwd)
-}
-
-func (c *Connection) setRecvIce(ufrag, pwd string) {
-	// parsed from offer
-	c.recvUfrag = ufrag
-	c.recvPasswd = pwd
-	log.Println("[conn] recv ice: ", ufrag, pwd)
-}
-
 func (c *Connection) setUser(user *User) {
 	c.user = user
-	if user != nil {
-		c.setSendIce(user.getSendIce())
-		c.setRecvIce(user.getRecvIce())
-	}
 }
 
 func (c *Connection) getAddr() net.Addr {
@@ -69,6 +44,7 @@ func (c *Connection) getAddr() net.Addr {
 }
 
 func (c *Connection) dispose() {
+	c.leave = true
 	if c.user != nil {
 		c.user.delConnection(c)
 	}
@@ -84,10 +60,9 @@ func (c *Connection) isTimeout() bool {
 func (c *Connection) onRecvData(data []byte) {
 	c.utime = util.NowMs()
 
-	if util.IsStunPacket(data) {
+	if !c.user.isIceDirect() && util.IsStunPacket(data) {
 		var msg util.IceMessage
 		if !msg.Read(data) {
-			// TODO: dtype= 1
 			log.Warnln("[conn] invalid stun message, dtype=", msg.Dtype)
 			return
 		}
@@ -118,6 +93,15 @@ func (c *Connection) onRecvData(data []byte) {
 	}
 }
 
+func (c *Connection) sendData(data []byte) bool {
+	c.chanSend <- NewHubMessage(data, nil, c.addr, nil)
+	return true
+}
+
+func (c *Connection) isReady() bool {
+	return c.ready
+}
+
 func (c *Connection) onRecvStunBindingRequest(transId string) {
 	if c.leave {
 		log.Warnln("[conn] had left!")
@@ -125,18 +109,10 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 	}
 
 	//log.Println("[conn] send stun binding response")
-	resp := util.NewStunMessageResponse(transId)
-
-	xorAttr := &util.StunXorAddressAttribute{}
-	xorAttr.SetType(util.STUN_ATTR_XOR_MAPPED_ADDRESS)
-	xorAttr.Addr.SetAddr(c.addr)
-
-	resp.AddAttribute(xorAttr)
-	resp.AddMessageIntegrity(c.sendPasswd)
-	resp.AddFingerprint()
+	_, sendPwd := c.user.getSendIce()
 
 	var buf bytes.Buffer
-	if !resp.Write(&buf) {
+	if !util.GenStunMessageResponse(&buf, sendPwd, transId, c.addr) {
 		log.Warnln("[conn] fail to gen stun response")
 		return
 	}
@@ -146,31 +122,17 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 	c.checkStunBindingRequest()
 }
 
-func (c *Connection) isReady() bool {
-	return c.ready
-}
-
-func (c *Connection) sendData(data []byte) bool {
-	c.chanSend <- NewHubMessage(data, nil, c.addr, nil)
-	return true
-}
-
 func (c *Connection) sendStunBindingRequest() bool {
-	if c.hadStunBindingResponse || c.bindError != 0 {
+	if c.hadStunBindingResponse {
 		return false
 	}
 
 	//log.Println("[conn] send stun binding request")
-	req := util.NewStunMessageRequest()
-
-	sendKey := c.recvUfrag + ":" + c.sendUfrag
-	usernameAttr := util.NewStunByteStringAttribute(util.STUN_ATTR_USERNAME, []byte(sendKey))
-	req.AddAttribute(usernameAttr)
-	req.AddMessageIntegrity(c.recvPasswd)
-	req.AddFingerprint()
+	sendUfrag, _ := c.user.getSendIce()
+	recvUfrag, recvPwd := c.user.getRecvIce()
 
 	var buf bytes.Buffer
-	if req.Write(&buf) {
+	if util.GenStunMessageRequest(&buf, sendUfrag, recvUfrag, recvPwd) {
 		log.Println("[conn] send stun binding request, len=", buf.Len())
 		c.sendData(buf.Bytes())
 	} else {

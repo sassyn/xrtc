@@ -274,7 +274,6 @@ func NewTCPConfig(name string) *TCPConfig {
 	cfg.Http.HostRoutes = make(map[string]*RouteTable)
 	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
 	cfg.Http.SessionRids = make(map[string]util.StringPair)
-	cfg.Http.Cache = NewCache()
 	return cfg
 }
 
@@ -293,7 +292,6 @@ func NewHTTPConfig(name string) *HTTPConfig {
 	cfg.Http.HostRoutes = make(map[string]*RouteTable)
 	cfg.Http.ProtoRoutes = make(map[string]*RouteTable)
 	cfg.Http.SessionRids = make(map[string]util.StringPair)
-	cfg.Http.Cache = NewCache()
 	return cfg
 }
 
@@ -320,6 +318,8 @@ var kDefaultHttpParams = HttpParams{
 type RouteTable struct {
 	Tag        string // backend tag
 	UpStreamId string // backend upstream
+	IceTcp     bool   // tcp with high priority if true
+	IceDirect  bool   // wether to enable iceDirect
 	Paths      []util.StringPair
 	UpStream   *UPSConfig
 }
@@ -405,6 +405,18 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 					table.UpStreamId = IsYamlString(v)
 				} else {
 					log.Warn("[config] http routes, invalid upstream=", v)
+				}
+			case "icetcp":
+				if _, err := IsYamlScalar(v); err == nil {
+					table.IceTcp = (IsYamlString(v) == "true")
+				} else {
+					log.Warn("[config] http routes, invalid iceTcp=", v)
+				}
+			case "icedirect":
+				if _, err := IsYamlScalar(v); err == nil {
+					table.IceDirect = (IsYamlString(v) == "true")
+				} else {
+					log.Warn("[config] http routes, invalid iceDirect=", v)
 				}
 			case "hosts":
 				if hosts, err := IsYamlList(v); err == nil {

@@ -65,37 +65,45 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 	return body, err
 }
 
-func procWebrtcRequest(hijack string, body []byte) []byte {
-	adminChan := Inst().ChanAdmin()
-
-	req := &proto.ProtoRequest{hijack, body}
+func procWebrtcRequest(route *RouteTarget, body []byte) []byte {
+	req := &proto.ProtoRequest{route.Hijack, body}
 	if ret, err := proto.Inst().ParseRequest(req); err == nil {
 		if ret != nil {
-			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionOffer, hijack)
+			wa := &WebrtcAction{
+				data:   ret.Sdp,
+				action: WebrtcActionOffer,
+			}
+			Inst().ChanAdmin() <- NewWebrtcActionMessage(wa)
 			return ret.Data
 		}
 	} else {
-		log.Warnln("[proxy] resquest error:", hijack, err, string(body))
+		log.Warnln("[proxy] resquest error:", route.Hijack, err, string(body))
 	}
 	return nil
 }
 
-func procWebrtcResponse(hijack, host string, body []byte) []byte {
-	adminChan := Inst().ChanAdmin()
-
-	resp := &proto.ProtoResponse{hijack, body, Inst().Candidates()}
+func procWebrtcResponse(route *RouteTarget, host string, body []byte) []byte {
+	resp := &proto.ProtoResponse{route.Hijack, body, Inst().Candidates()}
 	if ret, err := proto.Inst().ParseResponse(resp); err == nil {
 		if ret != nil {
-			adminChan <- NewWebrtcAction(ret.Sdp, WebrtcActionAnswer, host)
+			wa := &WebrtcAction{
+				data:      ret.Sdp,
+				action:    WebrtcActionAnswer,
+				tag:       route.Hijack,
+				iceHost:   host,
+				iceTcp:    route.IceTcp,
+				iceDirect: route.IceDirect,
+			}
+			Inst().ChanAdmin() <- NewWebrtcActionMessage(wa)
 			return ret.Data
 		}
 	} else {
-		log.Warnln("[proxy] response error:", hijack, err, string(body))
+		log.Warnln("[proxy] response error:", route.Hijack, err, string(body))
 	}
 	return nil
 }
 
-func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
+func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flush time.Duration, cfg HttpParams) http.Handler {
 	return &httputil.ReverseProxy{
 		// this is a simplified director function based on the
 		// httputil.NewSingleHostReverseProxy() which does not
@@ -116,12 +124,12 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 			}
 
 			// TODO: process request body
-			if len(hijack) == 0 {
+			if len(route.Hijack) == 0 {
 				//log.Warnln("[proxy] no hijack for path=", req.URL.Path)
 				return
 			}
 
-			req.Header.Add(kHttpHeaderWebrtcHijack, hijack)
+			req.Header.Add(kHttpHeaderWebrtcHijack, route.Hijack)
 			encoding := req.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(req.Body, encoding)
 			if body == nil || err != nil {
@@ -129,7 +137,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 				return
 			}
 
-			if newdata := procWebrtcRequest(hijack, body); newdata != nil {
+			if newdata := procWebrtcRequest(route, body); newdata != nil {
 				body = newdata
 			}
 
@@ -143,7 +151,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 				return nil
 			}
 
-			if len(hijack) == 0 {
+			if len(route.Hijack) == 0 {
 				//log.Warnln("[proxy] no hijack for path=", resp.Request.URL.Path)
 				return nil
 			}
@@ -156,7 +164,7 @@ func newHTTPProxy(hijack string, target *url.URL, tr http.RoundTripper, flush ti
 				return nil
 			}
 
-			if newdata := procWebrtcResponse(hijack, target.Host, body); newdata != nil {
+			if newdata := procWebrtcResponse(route, target.Host, body); newdata != nil {
 				body = newdata
 			}
 
@@ -209,8 +217,14 @@ type RouteTarget struct {
 	// This is cached here to prevent multiple generations per request.
 	RedirectURL *url.URL
 
-	// Hijack code
+	// Hijack tag
 	Hijack string
+
+	// Ice TCP with high priority
+	IceTcp bool
+
+	// Ice direct
+	IceDirect bool
 }
 
 type HTTPProxyHandler struct {
@@ -340,18 +354,18 @@ func (p *HTTPProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case upgrade == "websocket" || upgrade == "Websocket":
 		r.URL = targetURL
 		if targetURL.Scheme == "https" || targetURL.Scheme == "wss" {
-			h = newWSHandler(t.Hijack, targetURL.Host, func(network, address string) (net.Conn, error) {
+			h = newWSHandler(t, targetURL.Host, func(network, address string) (net.Conn, error) {
 				return tls.Dial(network, address, tr.(*http.Transport).TLSClientConfig)
 			})
 		} else {
-			h = newWSHandler(t.Hijack, targetURL.Host, net.Dial)
+			h = newWSHandler(t, targetURL.Host, net.Dial)
 		}
 	case accept == "text/event-stream":
 		// use the flush interval for SSE (server-sent events)
 		// must be > 0s to be effective
-		h = newHTTPProxy(t.Hijack, targetURL, tr, p.Config.FlushInterval, p.Config)
+		h = newHTTPProxy(t, targetURL, tr, p.Config.FlushInterval, p.Config)
 	default:
-		h = newHTTPProxy(t.Hijack, targetURL, tr, p.Config.GlobalFlushInterval, p.Config)
+		h = newHTTPProxy(t, targetURL, tr, p.Config.GlobalFlushInterval, p.Config)
 	}
 
 	if p.Config.GZIPContentTypes != nil {
@@ -407,8 +421,8 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 	return NewHTTPProxyHandle(*cfg, func(w http.ResponseWriter, r *http.Request) *RouteTarget {
 		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
 
-		var hijack string
-		var routeUri string
+		var hijack, routeUri string
+		var iceTcp, iceDirect bool
 
 		hostname, _, err := net.SplitHostPort(r.Host)
 		if err != nil {
@@ -506,9 +520,11 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 			}
 
 			hijack = route.Tag
+			iceTcp = route.IceTcp
+			iceDirect = route.IceDirect
 			if len(rid) > 0 {
 				// store route by rid
-				cfg.Cache.Set(rid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
+				cfg.Cache.Set(rid, NewCacheItemEx(&util.StringPair{hijack, routeUri}, 600*1000))
 			}
 
 			if hijack == "janus" {
@@ -525,7 +541,7 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 					} else {
 						// sotre route by jid
 						log.Println("[proxy] store route by jid=", jid, routeUri)
-						cfg.Cache.Set(jid, NewCacheItem(&util.StringPair{hijack, routeUri}, 600*1000))
+						cfg.Cache.Set(jid, NewCacheItemEx(&util.StringPair{hijack, routeUri}, 600*1000))
 					}
 				}
 			}
@@ -543,6 +559,8 @@ func NewHTTPHandler(name string, cfg *HttpParams) http.Handler {
 		return &RouteTarget{
 			Service:       name,
 			Hijack:        hijack,
+			IceTcp:        iceTcp,
+			IceDirect:     iceDirect,
 			TLSSkipVerify: true,
 			URL:           uri,
 		}

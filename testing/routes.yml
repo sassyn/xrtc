@@ -39,6 +39,8 @@ services:
                         - /janus
                 ums:
                     upstream: http://upstream_ums1
+                    icetcp: false
+                    icedirect: true
                     hosts:
                         - ums.zenvv.com
                     paths:
@@ -65,7 +67,7 @@ services:
     udpsvr1:
         proto: udp
         net:
-            enable: true
+            enable: false
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key

@@ -42,6 +42,9 @@ func (s *HttpServer) Params() *NetParams {
 }
 
 func (s *HttpServer) Run() {
+	s.config.Http.Cache = NewCache()
+	defer s.config.Http.Cache.Close()
+
 	defer s.ln.Close()
 
 	// How long to sleep on accept failure??

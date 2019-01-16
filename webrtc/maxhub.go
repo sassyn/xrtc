@@ -1,7 +1,6 @@
 package webrtc
 
 import (
-	//"fmt"
 	"net"
 	"strings"
 	"time"
@@ -58,31 +57,31 @@ func NewMaxHub() *MaxHub {
 // admin
 func (h *MaxHub) OnAdminData(msg *HubMessage) {
 	// TODO: process offer/answer
-	misc, ok := msg.misc.(*WebrtcAction)
+	wa, ok := msg.misc.(*WebrtcAction)
 	if !ok {
 		log.Warnln("[maxhub] invalid admin message")
 		return
 	}
-	if misc.action == WebrtcActionOffer {
+	if wa.action == WebrtcActionOffer {
 		var desc util.MediaDesc
-		if !desc.Parse(msg.data) {
+		if !desc.Parse(wa.data) {
 			log.Warnln("[maxhub] invalid offer")
 			return
 		}
 		ufrag := desc.GetUfrag() + "_offer"
 		log.Println("[maxhub] outer offer ufrag: ", ufrag)
-		h.cache.Set(ufrag, NewCacheItemEx(msg.data, misc.tag, 0))
-	} else if misc.action == WebrtcActionAnswer {
+		h.cache.Set(ufrag, NewCacheItem(wa))
+	} else if wa.action == WebrtcActionAnswer {
 		var desc util.MediaDesc
-		if !desc.Parse(msg.data) {
+		if !desc.Parse(wa.data) {
 			log.Warnln("[maxhub] invalid answer")
 			return
 		}
 		ufrag := desc.GetUfrag() + "_answer"
 		log.Println("[maxhub] inner answer ufrag: ", ufrag)
-		h.cache.Set(ufrag, NewCacheItemEx(msg.data, misc.tag, 0))
+		h.cache.Set(ufrag, NewCacheItem(wa))
 	} else {
-		log.Warnln("[maxhub] invalid admin action=", misc.action)
+		log.Warnln("[maxhub] invalid admin action=", wa.action)
 	}
 }
 
@@ -119,32 +118,41 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 
 		log.Println("[maxhub] stun name:", items)
 
-		var tag, host, offer, answer string
+		var offer, answer string
+		var tag, host string
+		var iceTcp, iceDirect bool
 		user, ok := h.clients[stunName]
 		if !ok {
-			answerUfrag := items[0] + "_answer"
 			offerUfrag := items[1] + "_offer"
 			if item := h.cache.Get(offerUfrag); item != nil {
-				offer = string(item.data.([]byte))
-				tag = string(item.misc.(string))
+				if wa, ok := item.data.(*WebrtcAction); ok {
+					offer = string(wa.data)
+				}
 			}
+
+			answerUfrag := items[0] + "_answer"
 			if item := h.cache.Get(answerUfrag); item != nil {
-				answer = string(item.data.([]byte))
-				host = string(item.misc.(string))
+				if wa, ok := item.data.(*WebrtcAction); ok {
+					answer = string(wa.data)
+					tag = wa.tag
+					host = wa.iceHost
+					iceTcp = wa.iceTcp
+					iceDirect = wa.iceDirect
+				}
 			}
 			if len(offer) <= 10 || len(answer) <= 10 || len(tag) < 2 || len(host) < 2 {
 				log.Warnln("[maxhub] invalid offer, answer", tag, host, len(offer), len(answer))
 				return
 			}
 
-			user = NewUser()
-			if !user.setOfferAnswer(tag, host, offer, answer) {
+			user = NewUser(tag, iceTcp, iceDirect)
+			if !user.setOfferAnswer(host, offer, answer) {
 				log.Warnln("[maxhub] invalid offer/answer for user")
 				return
 			}
 			h.clients[stunName] = user
 		} else {
-			log.Println("[maxhub] another connection for user-stun=", stunName)
+			log.Warnln("[maxhub] another connection for user-stun=", stunName)
 		}
 
 		if chanSend, ok := misc.(chan interface{}); ok {
@@ -154,8 +162,7 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 			// add conn into user
 			user.addConnection(conn)
 			h.connections[util.NetAddrString(addr)] = conn
-
-			conn.onRecvStunBindingRequest(msg.TransId)
+			conn.onRecvData(data)
 		} else {
 			log.Warnln("[maxhub] no chanSend for this connection")
 		}
@@ -241,6 +248,7 @@ func (h *MaxHub) Exit() {
 		svr.Exit()
 	}
 	h.exitTick <- true
+	h.cache.Close()
 }
 
 func (h *MaxHub) Run() {
@@ -248,7 +256,6 @@ func (h *MaxHub) Run() {
 
 	go h.loopForOuter()
 
-	tickChan := time.NewTicker(time.Second * 30).C
 	for {
 		select {
 		case msg, ok := <-h.chanAdmin:
@@ -259,8 +266,6 @@ func (h *MaxHub) Run() {
 			close(h.exitTick)
 			log.Println("hub exit...")
 			return
-		case <-tickChan:
-			h.cache.ClearTimeout()
 		}
 	}
 	log.Println("[maxhub] Run end")

@@ -251,15 +251,17 @@ func (m *MediaSdp) parseSdp(data []byte) bool {
 			if len(fields) >= 4 {
 				mattr = NewMediaAttr(fields[0], fields[2])
 				mattr.ptypes = append(mattr.ptypes, fields[3:]...)
-				if fields[0] == "audio" {
-					m.audios = append(m.audios, mattr)
-				} else if fields[0] == "video" {
-					m.videos = append(m.videos, mattr)
-				} else if fields[0] == "application" {
-					m.applications = append(m.applications, mattr)
-				} else {
-					break
-				}
+			} else {
+				mattr = NewMediaAttr(fields[0], "")
+			}
+			if fields[0] == "audio" {
+				m.audios = append(m.audios, mattr)
+			} else if fields[0] == "video" {
+				m.videos = append(m.videos, mattr)
+			} else if fields[0] == "application" {
+				m.applications = append(m.applications, mattr)
+			} else {
+				break
 			}
 		case 'c':
 			// nop
@@ -918,4 +920,50 @@ func GetSdpCandidates(data []byte) []string {
 		}
 	}
 	return candidates
+}
+
+// a=candidate:1 1 udp 2113937151 192.168.1.1 5000 typ host
+// a=candidate:2 1 tcp 1518280447 192.168.1.1 443 typ host tcptype passive
+type Candidate struct {
+	Foundation  string
+	ComponentId int    // 1-256, e.g., RTP-1, RTCP-2
+	Transport   string // udp/tcp
+	Priority    int    // 1-(2^31 - 1)
+	RelAddr     string // raddr
+	RelPort     string // rport
+	CandType    string // typ host/srflx/prflx/relay
+	NetType     string // network type
+}
+
+func ParseCandidates(lines []string) []Candidate {
+	var cands []Candidate
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "a=candidate:") {
+			continue
+		}
+		items := strings.Split(line, " ")
+		if len(items) < 8 {
+			log.Warnln("[sdp] invalid sdp candidate:", line)
+			continue
+		}
+
+		foundation := ""
+		if heads := strings.Split(items[0], ":"); len(heads) == 2 {
+			foundation = heads[1]
+		}
+
+		// typ host/srflx/prflx/relay
+		candType := items[6] + " " + items[7]
+
+		// tcptype passive
+		netType := ""
+		if len(items) >= 9 {
+			netType = strings.Join(items[8:], " ")
+		}
+
+		cand := Candidate{foundation, Atoi(items[1]), items[2], Atoi(items[3]), items[4], items[5], candType, netType}
+		cands = append(cands, cand)
+	}
+
+	return cands
 }

@@ -3,6 +3,7 @@ package webrtc
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -91,6 +92,9 @@ func (s *TcpServer) Params() *NetParams {
 }
 
 func (s *TcpServer) Run() {
+	s.config.Http.Cache = NewCache()
+	defer s.config.Http.Cache.Close()
+
 	defer s.ln.Close()
 
 	// How long to sleep on accept failure??
@@ -159,7 +163,7 @@ func (h *TcpHandler) Run() {
 
 func (h *TcpHandler) Process() bool {
 	data, err := h.conn.Peek(kSslClientHelloLen)
-	if len(data) < 3 {
+	if len(data) < 3 || err != nil {
 		log.Warnf("[tcp] no enough data, err: %v", err)
 		return false
 	}
@@ -224,62 +228,35 @@ func (h *TcpHandler) Process() bool {
 
 func (h *TcpHandler) ServeTCP() {
 	defer h.conn.Close()
-	log.Println("[tcp] tcp main begin")
+	log.Println("[ice-tcp-svr] tcp main begin")
 
 	// write goroutine
 	go h.writing()
 
 	// reading
-	head := make([]byte, 2)
-	rbuf := make([]byte, kMaxPacketSize)
 	sendChan := h.svr.hub.ChanRecvFromOuter()
-	quit := false
 
-loopTcpRead:
-	for !quit {
-		// read head(2bytes)
-		if nret, err := h.conn.Read(head[0:2]); err != nil {
-			log.Warnln("[tcp] tcp read head fail, err=", err)
-			break
-		} else {
-			h.recvCount += nret
-			if nret != 2 {
-				log.Warnln("[tcp] tcp read head < 2bytes and quit")
-				break
-			}
-		}
-
-		// body size
-		dsize := util.HostToNet16(util.BytesToUint16(head))
-		if dsize == 0 {
-			log.Warnln("[tcp] tcp invalid body")
-			continue
-		}
-		//log.Println("[tcp] tcp body size:", dsize)
-
-		// read body packet
-		rpos := 0
-		for rpos < int(dsize) {
-			need := int(dsize) - rpos
-			if nret, err := h.conn.Read(rbuf[rpos : rpos+need]); err != nil {
-				log.Warnln("[tcp] tcp error reading:", err)
-				if err == io.EOF {
-					quit = true
-					break loopTcpRead
-				}
-				continue
+	rbuf := make([]byte, kMaxPacketSize)
+	for {
+		if nret, err := ReadIceTcpPacket(h.conn, rbuf[0:]); err == nil {
+			if nret > 0 {
+				data := make([]byte, nret)
+				copy(data, rbuf[0:nret])
+				sendChan <- NewHubMessage(data, h.conn.RemoteAddr(), nil, h.chanRecv)
 			} else {
-				rpos += nret
-				h.recvCount += nret
+				log.Warnln("[ice-tcp-svr] read data nothing")
 			}
+		} else {
+			log.Warnln("[ice-tcp-svr] read data fail:", err)
+			break
 		}
-
-		// forward
-		sendChan <- NewHubMessage(rbuf[0:dsize], h.conn.RemoteAddr(), nil, h.chanRecv)
 	}
 
 	h.exitTick <- true
-	log.Println("[tcp] tcp main end")
+
+	// TODO: remove connection/user/service from maxhub
+
+	log.Println("[ice-tcp-svr] tcp main end")
 }
 
 func (h *TcpHandler) writing() {
@@ -290,36 +267,26 @@ func (h *TcpHandler) writing() {
 		select {
 		case msg, ok := <-h.chanRecv:
 			if !ok {
-				log.Println("[tcp] tcp close channel")
+				log.Println("[ice-tcp-svr] tcp close channel")
 				return
 			}
 
 			if umsg, ok := msg.(*HubMessage); ok {
-				pktLen := len(umsg.data)
-				if pktLen > kMaxPacketSize {
-					log.Warnln("[tcp] tcp too much data, size=", pktLen)
-					continue
-				}
-
-				var wbuf bytes.Buffer
-				util.WriteBig(&wbuf, uint16(pktLen))
-				wbuf.Write(umsg.data)
-
-				if nb, err := h.conn.Write(wbuf.Bytes()); err != nil {
-					log.Warnln("[tcp] tcp send err:", err, nb)
+				if nb, err := WriteIceTcpPacket(h.conn, umsg.data); err != nil {
+					log.Warnln("[ice-tcp-svr] tcp send err:", err, nb)
 					return
 				} else {
 					//log.Println("[tcp] tcp send size:", nb)
 					h.sendCount += nb
 				}
 			} else {
-				log.Warnln("[tcp] not-send invalid msg")
+				log.Warnln("[ice-tcp-svr] not-send invalid msg")
 			}
 		case <-tickChan:
-			log.Printf("[tcp] statistics[%s], sendCount=%d, recvCount=%d\n", raddrStr, h.sendCount, h.recvCount)
+			log.Printf("[ice-tcp-svr] statistics[%s], sendCount=%d, recvCount=%d\n", raddrStr, h.sendCount, h.recvCount)
 		case <-h.exitTick:
 			close(h.exitTick)
-			log.Println("[tcp] tcp exit writing")
+			log.Println("[ice-tcp-svr] tcp exit writing")
 			return
 		}
 	}
@@ -348,4 +315,64 @@ func checkHttpRequest(data []byte) bool {
 	} else {
 		return false
 	}
+}
+
+func WriteIceTcpPacket(conn net.Conn, body []byte) (int, error) {
+	if len(body) > kMaxPacketSize {
+		return 0, errors.New("Too much data for ice-tcp")
+	}
+	var buf bytes.Buffer
+	util.WriteBig(&buf, uint16(len(body)))
+	buf.Write(body)
+	return conn.Write(buf.Bytes())
+}
+
+func ReadIceTcpPacket(conn net.Conn, body []byte) (int, error) {
+	if len(body) < kMaxPacketSize {
+		return 0, errors.New("No enough size in buf for ice-tcp")
+	}
+
+	rpos := 0
+	head := make([]byte, 2)
+	var err error
+	for {
+		// read head(2bytes)
+		nret := 0
+		if nret, err = conn.Read(head[0:2]); err != nil {
+			log.Warnln("[ice-tcp] read head fail, err=", err)
+			break
+		} else {
+			if nret != 2 {
+				log.Warnln("[ice-tcp] read head < 2bytes and quit")
+				err = errors.New("No enough size in head(2bytes)")
+				break
+			}
+		}
+
+		// body size
+		dsize := util.HostToNet16(util.BytesToUint16(head))
+		if dsize == 0 {
+			log.Warnln("[ice-tcp] invalid body")
+			continue
+		}
+		//log.Println("[ice-tcp] body size:", dsize)
+
+		// read body packet
+		for rpos < int(dsize) {
+			need := int(dsize) - rpos
+			if nret, err = conn.Read(body[rpos : rpos+need]); err != nil {
+				log.Warnln("[ice-tcp] read body err:", err)
+				if err == io.EOF {
+					break
+				}
+				continue
+			} else {
+				rpos += nret
+			}
+		}
+
+		break
+	}
+
+	return rpos, err
 }

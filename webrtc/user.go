@@ -6,10 +6,12 @@ import (
 )
 
 type User struct {
-	tag         string // this is hijack
-	connections map[string]*Connection
-	chanSend    chan interface{}
-	service     *Service
+	tag         string
+	iceTcp      bool                   // connect with webrtc server by tcp/udp
+	iceDirect   bool                   // xrtc forward ice stun between outer and inner
+	connections map[string]*Connection // outer client connections
+	chanSend    chan interface{}       // data to inner
+	service     *Service               // inner webrtc server
 
 	activeConn *Connection // active conn
 	sendUfrag  string
@@ -23,18 +25,23 @@ type User struct {
 	ctime uint32 // create time
 }
 
-func NewUser() *User {
-	u := &User{utime: util.NowMs(), ctime: util.NowMs()}
-	u.connections = make(map[string]*Connection)
-	u.chanSend = make(chan interface{}, 100)
-	return u
+func NewUser(tag string, iceTcp, iceDirect bool) *User {
+	return &User{
+		tag:         tag,
+		iceTcp:      iceTcp,
+		iceDirect:   iceDirect,
+		connections: make(map[string]*Connection),
+		chanSend:    make(chan interface{}, 100),
+		utime:       util.NowMs(),
+		ctime:       util.NowMs(),
+	}
 }
 
 func (u *User) getKey() string {
 	return u.recvUfrag + ":" + u.sendUfrag
 }
 
-func (u *User) setOfferAnswer(tag, host, offer, answer string) bool {
+func (u *User) setOfferAnswer(host, offer, answer string) bool {
 	var desc1 util.MediaDesc
 	if desc1.Parse([]byte(offer)) {
 		// parsed from offer
@@ -59,10 +66,7 @@ func (u *User) setOfferAnswer(tag, host, offer, answer string) bool {
 		return false
 	}
 
-	u.tag = tag
-	u.startService(host, desc2.GetCandidates())
-
-	return true
+	return u.startService(host, desc2.GetCandidates())
 }
 
 func (u *User) getSendIce() (string, string) {
@@ -81,6 +85,14 @@ func (u *User) getOffer() string {
 
 func (u *User) getAnswer() string {
 	return u.answer
+}
+
+func (u *User) isIceTcp() bool {
+	return u.iceTcp
+}
+
+func (u *User) isIceDirect() bool {
+	return u.iceDirect
 }
 
 func (u *User) addConnection(conn *Connection) {
@@ -115,11 +127,13 @@ func (u *User) sendToOuter(data []byte) {
 			}
 		}
 	}
-	if u.activeConn != nil {
-		u.activeConn.sendData(data)
-	} else {
+
+	if u.activeConn == nil {
 		log.Warnln("[user] no active connection")
+		return
 	}
+
+	u.activeConn.sendData(data)
 }
 
 func (u *User) isTimeout() bool {
@@ -139,9 +153,9 @@ func (u *User) dispose() {
 	}
 }
 
-func (u *User) startService(host string, candidates []string) {
+func (u *User) startService(host string, candidates []string) bool {
 	if u.service != nil {
-		return
+		return true
 	}
 
 	hostIp := util.LookupIP(host)
@@ -154,7 +168,10 @@ func (u *User) startService(host string, candidates []string) {
 	log.Println("[user] init service, sendfragpwd=", sufrag, spwd, len(sufrag), len(spwd))
 	log.Println("[user] init service, recvfragpwd=", rufrag, rpwd, len(rufrag), len(rpwd))
 
+	bret := false
 	u.service = NewService(u, u.chanSend)
-	u.service.Init(sufrag, spwd, remoteSdp)
-	u.service.Start()
+	if u.service.Init(sufrag, spwd, remoteSdp) {
+		bret = u.service.Start()
+	}
+	return bret
 }

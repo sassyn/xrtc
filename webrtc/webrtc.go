@@ -17,18 +17,21 @@ const (
 )
 
 type WebrtcAction struct {
-	action int
-	tag    string
+	data      []byte
+	action    int
+	tag       string
+	iceHost   string
+	iceTcp    bool
+	iceDirect bool
 }
 
-func NewWebrtcAction(data []byte, action int, tag string) interface{} {
-	misc := &WebrtcAction{action, tag}
-	return NewHubMessage(data, nil, nil, misc)
+func NewWebrtcActionMessage(wa *WebrtcAction) interface{} {
+	return NewHubMessage(nil, nil, nil, wa)
 }
 
 type Webrtc interface {
 	ChanAdmin() chan interface{}
-	Candidates() []string
+	Candidates() []string // xRTC candidates for WebRTC client
 	Exit()
 }
 

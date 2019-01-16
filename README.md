@@ -9,6 +9,7 @@
 - [x] Serve as an extendable node of WebRTC server.
 - [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
 - [x] Support `upstream` config like nginx (partial).
+- [x] Support `icedirect`(transparent) between client and WebRTC server.(partial)
 
 
 <br>
@@ -16,7 +17,6 @@
 # TODO
 
 - [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
-- [ ] Transparent WebRTC routing(`ice_direct`) between client and WebRTC server.
 - [ ] Jitsi WebRTC server support
 
 
@@ -62,6 +62,9 @@ The xRTC can use the same port (ICE-UDP/TCP) for different clients.
 
 ## 2. Flow
 
+
+### 1) Stun-Hijacked Flow
+
 ```
 WebRTC client <---------------------->     xRTC    <--------------------> WebRTC server
                                         (1)
@@ -70,10 +73,13 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
                                         (2)
               <--- (Parse answer from REST response and forward) --------
               
-                       (3)                                     (4)
+                                        (3)
+                                connect with server              ------->
+              
+                       (4)                                     (5)
               <--- ice data0--->       xRTC             <---ice data1--->
               
-                                        (5)
+                                        (6)
               <------         dtls/sctp/srtp/srtcp forward       ------->
 ```
 
@@ -81,16 +87,59 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 > ***Step1***: Parse offer of REST request from WebRTC client.  
 > 		xRTC parses send-ice-ufrag/pwd from offer.
 > 
-> ***Step2***: Parse answer of REST response from WebRTC client.  
->		xRTC parses recv-ice-ufrag/pwd from answer.  
+> ***Step2***: Parse answer of REST response from WebRTC server.  
+>		xRTC parses recv-ice-ufrag/pwd from answer.   
+> 		Answer candidates are updated with `host_ip` & `udp/tcp server port`(passive-only-mode) in config. 
 > 
-> ***Step3***: Build and maintain ice connection0 between WebRTC client and xRTC.  
-> 		xRTC makes use of recv-ice-ufrag/pwd to accept connection from client.   
-> 		xRTC candidates are passive-only-mode and consisted of `host_ip` & `udp/tcp server port` in config.
+> ***Step3***: Build ice connection between xRTC and WebRTC server.  
+> 		xRTC builds ice conenction(send-ice-ufrag/pwd) by libnice.   
+> 		The candidates are passive or active-mode.
 > 
-> ***Step4***: Build and maintain ice connection1 between xRTC and WebRTC server.  
-> 		xRTC makes use of send-ice-ufrag/pwd to build connection to server.   
-> 		xRTC candidates are passive/active-mode with WebRTC servers.
+> ***Step4***: Maintain ice connection0 between WebRTC client and xRTC.  
+> 		xRTC makes use of recv-ice-ufrag/pwd to interact with client. 
+> 
+> ***Step5***: Maintain ice connection1 between xRTC and WebRTC server.  
+> 		xRTC-libnice takes the owner to interact with server. 
+> 
+> ***Step6***: Forward dtls/sctp/srtp/srtcp data between WebRTC client and WebRTC server.  
+> 		xRTC only forwards these packets between client and server.
+
+
+<br>
+
+### 2) Stun-Transparent Flow
+
+```
+WebRTC client <---------------------->     xRTC    <--------------------> WebRTC server
+                                        (1)
+              ---- (Parse offer from REST request and forward)   ------->
+              
+                                        (2)
+              <--- (Parse answer from REST response and forward) --------
+              
+                                        (3)
+                                connect with server              ------->
+              
+                                        (4)
+              <--------------    ice data forward    ------------------->
+              
+                                        (5)
+              <------         dtls/sctp/srtp/srtcp forward       ------->
+```
+
+> ***Step1***: Parse offer of REST request from WebRTC client.  
+> 		xRTC parses send-ice-ufrag/pwd from offer.
+> 
+> ***Step2***: Parse answer of REST response from WebRTC server.  
+> 		xRTC parses recv-ice-ufrag/pwd from answer.  
+> 		Answer candidates are updated with `host_ip` & `udp/tcp server port`(passive-only-mode) in config.  
+> 		xRTC parses WebRTC-server ip/port from canddiate. 
+> 
+> ***Step3***: Build connection between xRTC and WebRTC server.  
+> 		xRTC builds general network conenction(udp/tcp) with address from Step2. 
+> 
+> ***Step4***: Foward ice data between WebRTC client and xRTC.  
+> 		xRTC only forwards these packets between client and server. 
 > 
 > ***Step5***: Forward dtls/sctp/srtp/srtcp data between WebRTC client and WebRTC server.  
 > 		xRTC only forwards these packets between client and server.
@@ -178,6 +227,8 @@ The server's fields contains:
 	* ***routes***: HTTP-RP routing rules with priority desc....  
 		Each group is a hijack tag for which kind of route, e.g. `janus/default`.  
 		* ***upstream***: a seperate uri or previous upstream group.
+		* ***icetcp***: xRTC connects WebRTC server with TCP in high-priority.
+		* ***icedirect***: xRTC forwards all ice-data between client and server.
 		* ***hosts***: hostname matching if `servername: _`
 		* ***protos***: websocket matching, e.g. `var ws = WebSocket("wss://..", "protocol_name");`
 		* ***paths***: path matching, now only support prefix-matching

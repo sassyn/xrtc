@@ -18,7 +18,7 @@ type dialFunc func(network, address string) (net.Conn, error)
 // an incoming and outgoing websocket connection. It checks whether
 // the handshake was completed successfully before forwarding data
 // between the client and server.
-func newWSHandler(hijack string, host string, dial dialFunc) http.Handler {
+func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hj, ok := w.(http.Hijacker)
 		if !ok {
@@ -84,10 +84,10 @@ func newWSHandler(hijack string, host string, dial dialFunc) http.Handler {
 		out.SetReadDeadline(time.Time{})
 
 		errc := make(chan error, 2)
-		cp := func(hijack string, dst io.Writer, src io.Reader, req bool) {
+		cp := func(dst io.Writer, src io.Reader, req bool) {
 			rw := bufio.NewReadWriter(bufio.NewReader(src), bufio.NewWriter(dst))
 			conn := newHybiServerConn(rw)
-			frame := make([]byte, 64*1024)
+			frame := make([]byte, 256*1024)
 			for {
 				if n, err := conn.ReadFrame(frame[0:]); err != nil {
 					log.Warnf("[ws] req=%v, read error=", req, err)
@@ -96,11 +96,11 @@ func newWSHandler(hijack string, host string, dial dialFunc) http.Handler {
 					body := frame[0:n]
 					//log.Warnf("[ws] hijack=%s, req=%v, read body=%s", hijack, req, len(body))
 					if req {
-						if newdata := procWebrtcRequest(hijack, body); newdata != nil {
+						if newdata := procWebrtcRequest(route, body); newdata != nil {
 							body = newdata
 						}
 					} else {
-						if newdata := procWebrtcResponse(hijack, host, body); newdata != nil {
+						if newdata := procWebrtcResponse(route, host, body); newdata != nil {
 							body = newdata
 						}
 					}
@@ -114,8 +114,8 @@ func newWSHandler(hijack string, host string, dial dialFunc) http.Handler {
 			errc <- err
 		}
 
-		go cp(hijack, out, in, true)
-		go cp(hijack, in, out, false)
+		go cp(out, in, true)
+		go cp(in, out, false)
 		err = <-errc
 		if err != nil && err != io.EOF {
 			log.Warnf("[ws] WS error for %s. %s", r.URL, err)

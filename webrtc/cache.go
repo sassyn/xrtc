@@ -2,6 +2,7 @@ package webrtc
 
 import (
 	"sync"
+	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
 	"github.com/PeterXu/xrtc/util"
@@ -9,27 +10,35 @@ import (
 
 type Cache struct {
 	sync.RWMutex
-	items map[string]*CacheItem
+	items    map[string]*CacheItem
+	exitTick chan bool
 }
 
 func NewCache() *Cache {
-	return &Cache{items: make(map[string]*CacheItem)}
+	c := &Cache{
+		items:    make(map[string]*CacheItem),
+		exitTick: make(chan bool),
+	}
+	go c.Run()
+	return c
 }
+
+// default 30s
+const kDefaultTimeout = 30 * 1000 // ms
 
 type CacheItem struct {
 	data    interface{} // data
-	misc    interface{} // others
-	timeout uint32      // timeout, if 0 use default timeout
+	timeout uint32      // timeout, default(30s) if 0
 	utime   uint32      // update time (last access time)
 	ctime   uint32      // create time
 }
 
-func NewCacheItem(data interface{}, timeout uint32) *CacheItem {
-	return &CacheItem{data: data, timeout: timeout, utime: util.NowMs(), ctime: util.NowMs()}
+func NewCacheItem(data interface{}) *CacheItem {
+	return &CacheItem{data: data, timeout: 0, utime: util.NowMs(), ctime: util.NowMs()}
 }
 
-func NewCacheItemEx(data interface{}, misc interface{}, timeout uint32) *CacheItem {
-	return &CacheItem{data: data, misc: misc, timeout: timeout, utime: util.NowMs(), ctime: util.NowMs()}
+func NewCacheItemEx(data interface{}, timeout uint32) *CacheItem {
+	return &CacheItem{data: data, timeout: timeout, utime: util.NowMs(), ctime: util.NowMs()}
 }
 
 func (h *Cache) Get(key string) *CacheItem {
@@ -60,9 +69,6 @@ func (h *Cache) Update(key string) bool {
 }
 
 func (h *Cache) ClearTimeout() {
-	// default 30s
-	const kDefaultTimeout = 30 * 1000 // ms
-
 	nowTime := util.NowMs()
 	var desperated []string
 	h.RLock()
@@ -84,5 +90,23 @@ func (h *Cache) ClearTimeout() {
 			delete(h.items, desperated[index])
 		}
 		h.Unlock()
+	}
+}
+
+func (h *Cache) Close() {
+	h.exitTick <- true
+}
+
+func (h *Cache) Run() {
+	tickChan := time.NewTicker(time.Second * 30).C
+	for {
+		select {
+		case <-h.exitTick:
+			close(h.exitTick)
+			log.Println("[cache] cache exit...")
+			return
+		case <-tickChan:
+			h.ClearTimeout()
+		}
 	}
 }
