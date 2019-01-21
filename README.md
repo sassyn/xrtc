@@ -3,21 +3,30 @@
 ***xRTC*** is an eXtendable WebRTC proxy, for REST-based WebRTC server.
 
 - [x] Serve many WebRTC clients on one ICE port at the same time.
-- [x] Serve as HTTP/WebSocket Reverse Proxy(`HTTP-RP`) .
+- [x] Serve as a HTTP/WebSocket Reverse Proxy(`HTTP-RP`) .
 - [x] Serve HTTP/HTTPS/WS/WSS/ICE-TCP on one TCP port at the same time.
-- [x] Serve as HTTP static server.
+- [x] Serve as a HTTP static server.
 - [x] Serve as an extendable node of WebRTC server.
 - [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
 - [x] Support `upstream` config like nginx (partial).
-- [x] Support `icedirect`(transparent) between client and WebRTC server.(partial)
+- [x] Support `icedirect`(transparent) between WebRTC client and server.(partial)
 
 
 <br>
 
 # TODO
 
+- [ ] Support `upstream` mode="random/cycle/sticky"
 - [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
 - [ ] Jitsi WebRTC server support
+
+
+<br>
+
+# ISSUES
+
+- [ ] For Janus the `icedirect` only supports tcp (set `icetcp: true`). 
+- [ ] The `upstream` only chooses the first server.
 
 
 <br>
@@ -36,9 +45,11 @@ WebRTC client B   <---ICE port1--->  WebRTC server(Janus/..)
 WebRTC client C   <---ICE port2--->  WebRTC server(Janus/..)
 ```
 
-The clients must connect to the same WebRTC server for interacting with each other.
+Two connections: one HTTP/WS connection and another WebRTC-ICE.
 
-And also the WebRTC server(Janus) need to use different ports for different clients.
+The clients must connect to the same WebRTC server directly for interaction.
+
+And some WebRTC server(Janus) need to use different ports for different clients (WebRTC-ICE).
 
 However, most servers only provide limited ports for security.
 
@@ -55,7 +66,9 @@ WebRTC client B   <--ICE port0-->   xRTC0  <--ICE port2-->  WebRTC server
 WebRTC client C   <--ICE port1-->   xRTC1  <--ICE port3-->  WebRTC server
 ```
 
-The xRTC can use the same port (ICE-UDP/TCP) for different clients.
+Two connections: one HTTP-RP connection and another WebRTC-ICE.
+
+The xRTC can use the same port (ICE-UDP/TCP) for different clients(WebRTC-ICE).
 
 
 <br>
@@ -63,7 +76,13 @@ The xRTC can use the same port (ICE-UDP/TCP) for different clients.
 ## 2. Flow
 
 
-### 1) Stun-Hijacked Flow
+### 1) ICE-Hijacked Flow
+
+xRTC is half-proxy for WebRTC connection.
+
+ICE packets(STUN) will be processed seperatly for WebRTC client/server in xRTC proxy.
+
+Data packets(DTLS/SRTP/SRTCP) will be only forwardded between WebRTC client/server.
 
 ```
 WebRTC client <---------------------->     xRTC    <--------------------> WebRTC server
@@ -107,7 +126,11 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 
 <br>
 
-### 2) Stun-Transparent Flow
+### 2) ICE-Transparent Flow
+
+xRTC is full-proxy for WebRTC connection (`icedirect: true`).
+
+ICE/Data packets(STUN/DTLS/SRTP/SRTCP) will be forwardded between WebRTC client/server.
 
 ```
 WebRTC client <---------------------->     xRTC    <--------------------> WebRTC server
