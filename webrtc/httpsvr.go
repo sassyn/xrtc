@@ -147,7 +147,10 @@ func (h *HttpHandler) Process() bool {
 
 	// now it is plain conn for tcp/http
 	//log.Println("[http] setup http/https for", h.conn.RemoteAddr())
-	http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
+	http.Serve(
+		NewHttpListener(h.conn),
+		NewHttpServeHandler(h.svr.config.Name, &h.svr.config.Http),
+	)
 	//log.Println("[http] setup success")
 	return true
 }

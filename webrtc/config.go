@@ -370,7 +370,7 @@ type STSHeader struct {
 	Preload    bool
 }
 
-// Load loads the http parameters(routes/hijacks/..) under a service.
+// Load loads the http parameters(routes/..) under a service.
 func (h *HttpParams) Load(node yaml.Map) {
 	h.Servername = IsYamlString(node.Key("servername"))
 	if len(h.Servername) == 0 {

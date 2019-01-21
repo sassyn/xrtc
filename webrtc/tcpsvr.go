@@ -186,7 +186,10 @@ func (h *TcpHandler) Process() bool {
 	} else if bytes.Compare(prefix, kSslServerHello[0:prelen]) != 0 {
 		log.Println("[tcp] setup http/rawtcp handshake for", h.conn.RemoteAddr())
 		if checkHttpRequest(prefix) {
-			http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
+			http.Serve(
+				NewHttpListener(h.conn),
+				NewHttpServeHandler(h.svr.config.Name, &h.svr.config.Http),
+			)
 		} else {
 			h.ServeTCP()
 		}
@@ -216,7 +219,10 @@ func (h *TcpHandler) Process() bool {
 		log.Println("[tcp] setup tls (http/tcp) for", h.conn.RemoteAddr(), string(prefix))
 		h.conn = conn3
 		if checkHttpRequest(prefix) {
-			http.Serve(NewHttpListener(h.conn), NewHTTPHandler(h.svr.config.Name, &h.svr.config.Http))
+			http.Serve(
+				NewHttpListener(h.conn),
+				NewHttpServeHandler(h.svr.config.Name, &h.svr.config.Http),
+			)
 		} else {
 			h.ServeTCP()
 		}

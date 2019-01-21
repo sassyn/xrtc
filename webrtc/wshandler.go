@@ -94,7 +94,7 @@ func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 					break
 				} else if n > 0 {
 					body := frame[0:n]
-					//log.Warnf("[ws] hijack=%s, req=%v, read body=%s", hijack, req, len(body))
+					//log.Warnf("[ws] tag=%s, req=%v, read body=%s", route.Tag, req, len(body))
 					if req {
 						if newdata := procWebrtcRequest(route, body); newdata != nil {
 							body = newdata
@@ -104,7 +104,7 @@ func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 							body = newdata
 						}
 					}
-					//log.Warnf("[ws] hijack=%s, req=%v, read body=%s", hijack, req, string(body))
+					//log.Warnf("[ws] tag=%s, req=%v, read body=%s", route.Tag, req, string(body))
 					if _, err := conn.Write(body); err != nil {
 						log.Warnf("[ws] req=%v, write error=", req, err)
 						break

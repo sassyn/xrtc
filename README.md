@@ -227,7 +227,7 @@ The server's fields contains:
 		if not "_", only matched request will be processsed, like nginx. 
 	* ***root***: HTTP static directory for no-routing http request.
 	* ***routes***: HTTP-RP routing rules with priority desc....  
-		Each group is a hijack tag for which kind of route, e.g. `janus/default`.  
+		Each group is a tag of server for which kind of route, e.g. `janus/default`.  
 		* ***upstream***: a seperate uri or previous upstream group.
 		* ***icetcp***: xRTC connects WebRTC server with TCP in high-priority.
 		* ***icedirect***: xRTC forwards all ice-data between client and server.
