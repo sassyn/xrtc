@@ -26,7 +26,7 @@ docker: build
 	docker build -t $(NS)/$(REPO):$(VERSION) -f testing/Dockerfile .
 
 deploy: 
-	@export host_ip=$(HOST_IP) && \
+	@export xrtc_cand_ip=$(HOST_IP) && \
 		docker-compose -f testing/docker-compose.yml up -d
 
 docker-pull:
@@ -47,7 +47,7 @@ docker-mac:
 
 deploy-mac:
 	@export janus_api=$(JANUS_IP) && export ums_api=$(UMS_IP) && export html_api=$(HTML_IP) && \
-		export host_ip=$(HOST_IP) && \
+		export xrtc_cand_ip=$(HOST_IP) && \
 		docker-compose -f testing/docker-compose.cross.yml up -d
 	@docker logs -f xrtc-proxy
 

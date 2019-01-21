@@ -357,8 +357,10 @@ func genServiceSdp(hostIp, ufrag, pwd string, candidates []string) string {
 	lines = append(lines, "a=ice-ufrag:"+ufrag)
 	lines = append(lines, "a=ice-pwd:"+pwd)
 	if candidates != nil && len(candidates) > 0 {
+		// for janus
 		lines = append(lines, candidates...)
 	} else {
+		// for ums webrtc server
 		lines = append(lines, fmt.Sprintf(kDefaultUdpCandidate, hostIp))
 		lines = append(lines, fmt.Sprintf(kDefaultTcpCandidate, hostIp))
 	}

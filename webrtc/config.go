@@ -211,21 +211,21 @@ func (u *UPSConfig) Load(node yaml.List) {
 
 // Net basic params
 type NetParams struct {
-	Enable     bool
 	Addr       string // "host:port"
 	TlsCrtFile string
 	TlsKeyFile string
-	Candidates []string // candidate ip
+	EnableIce  bool     // enable for ice
+	Candidates []string // ice candidates, valid when EnableIce is true
 }
 
 // Load loads the "net:" parameters under one service.
 func (n *NetParams) Load(node yaml.Map, proto string) {
-	n.Enable = (IsYamlString(node.Key("enable")) == "true")
 	n.Addr = IsYamlString(node.Key("addr"))
 	n.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
 	n.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
 
-	for n.Enable {
+	n.EnableIce = (IsYamlString(node.Key("enable_ice")) == "true")
+	for n.EnableIce {
 		var port string
 		var err error
 		if _, port, err = net.SplitHostPort(n.Addr); err != nil {
@@ -233,14 +233,17 @@ func (n *NetParams) Load(node yaml.Map, proto string) {
 			break
 		}
 		var ips yaml.List
-		if ips, err = IsYamlList(node.Key("ips")); err != nil {
+		if ips, err = IsYamlList(node.Key("candidate_ips")); err != nil {
 			break
 		}
 		for idx, ip := range ips {
-			szip := IsYamlString(ip)
-			if len(szip) == 0 {
+			szip0 := IsYamlString(ip)
+			if len(szip0) == 0 {
 				continue
 			}
+			szip := util.LookupIP(szip0)
+			log.Println("[config] candidate_ip: ", szip0, szip)
+
 			var candidate string
 			if proto == "udp" {
 				candidate = fmt.Sprintf("a=candidate:%d 1 udp 2013266431 %s %s typ host", (idx + 1), szip, port)

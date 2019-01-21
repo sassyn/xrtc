@@ -15,7 +15,6 @@ services:
     httpsvr1:
         proto: http
         net:
-            enable: true
             addr: :6443
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
@@ -58,21 +57,21 @@ services:
     tcpsvr1:
         proto: tcp
         net:
-            enable: true
             addr: :6080
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
-            ips:
-                - host_ip
+            enable_ice: true
+            candidate_ips:
+                - xrtc_cand_ip
         enable_http: false
 
     udpsvr1:
         proto: udp
         net:
-            enable: true
             addr: :6000
             tls_crt_file: /tmp/etc/cert.pem
             tls_key_file: /tmp/etc/cert.key
-            ips:
-                - host_ip
+            enable_ice: true
+            candidate_ips:
+                - xrtc_cand_ip
 

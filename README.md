@@ -89,7 +89,7 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 > 
 > ***Step2***: Parse answer of REST response from WebRTC server.  
 >		xRTC parses recv-ice-ufrag/pwd from answer.   
-> 		Answer candidates are updated with `host_ip` & `udp/tcp server port`(passive-only-mode) in config. 
+> 		Answer candidates are updated with `xrtc_cand_ip` & `udp/tcp server port`(passive-only-mode) in config. 
 > 
 > ***Step3***: Build ice connection between xRTC and WebRTC server.  
 > 		xRTC builds ice conenction(send-ice-ufrag/pwd) by libnice.   
@@ -132,7 +132,7 @@ WebRTC client <---------------------->     xRTC    <--------------------> WebRTC
 > 
 > ***Step2***: Parse answer of REST response from WebRTC server.  
 > 		xRTC parses recv-ice-ufrag/pwd from answer.  
-> 		Answer candidates are updated with `host_ip` & `udp/tcp server port`(passive-only-mode) in config.  
+> 		Answer candidates are updated with `xrtc_cand_ip` & `udp/tcp server port`(passive-only-mode) in config.  
 > 		xRTC parses WebRTC-server ip/port from canddiate. 
 > 
 > ***Step3***: Build connection between xRTC and WebRTC server.  
@@ -161,12 +161,12 @@ services:
       - http://janus_api:8088
       - ws://janus_api:8188
     net:
-      enable: true
       addr: :6443
       tls_crt_file: /tmp/etc/cert.pem
       tls_key_file: /tmp/etc/cert.key
-      ips:
-        - host_ip
+      enable_ice: true
+      candidate_ips:
+        - xrtc_cand_ip
     enable_http: true
     http:
       servername: _
@@ -202,16 +202,16 @@ The server's fields contains:
 	Each server should be: "http/https/ws/wss://host[:port]",   
 	like nginx upstream. 
 	
-3. ***net***: network config, only valid for `proto:udp/tcp/http`
-	* ***enable***: *true/false*
+3. ***net***: network config, only valid for `proto: udp/tcp/http`
 	* ***addr***: server listen address, format: "*ip:port*"
 	* ***tls\_crt\_file***: local crt file(openssl)
 	* ***tls\_key\_file***: local key file(openssl)
-	* ***ips***: server ICE candidate ip address.
+	* ***enable_ice***: *true/false*, enable ice service, only valid for `proto: udp/tcp`.
+	* ***candidate_ips***: server ICE candidate ip/host address, only valid for `proto: udp/tcp`
 	
-	The `enable` is only valid for `proto:udp/tcp`, for ICE candidates.
+	The `enable` is only valid for `proto: udp/tcp`, for ICE candidates.
 	
-	The `tls_crt_file/tls_key_file` is only valid for `proto:udp/tcp`.
+	The `tls_crt_file/tls_key_file` is only valid for `proto: udp/tcp`.
 	
 	The `ips` is only valid for `proto: udp/tcp`, IP of xrtc ICE candidates.
 
