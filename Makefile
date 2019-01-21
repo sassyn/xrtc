@@ -13,6 +13,9 @@ all: build
 build:
 	@PKG_CONFIG_PATH=/usr/local/lib/pkgconfig go build -ldflags "-s -w"
 
+test:
+	@cd webrtc && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig go test
+
 clean:
 	@go clean
 
@@ -39,6 +42,9 @@ docker-build:
 	@(cp -rf /usr/local/lib testing/lib)
 	@(docker build -t $(NS)/$(REPO)-build:$(VERSION) -f testing/Dockerfile.build testing)
 	@(rm -rf testing/include testing/lib)
+
+docker-test:
+	@docker run -v $(GOPATH):/gopath -v $(shell pwd):/gobuild -it --rm peterxu/docker-xrtc-build make test
 
 docker-mac:
 	@docker run -v $(GOPATH):/gopath -v $(shell pwd):/gobuild -it --rm peterxu/docker-xrtc-build make

@@ -90,7 +90,7 @@ func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 			frame := make([]byte, 256*1024)
 			for {
 				if n, err := conn.ReadFrame(frame[0:]); err != nil {
-					log.Warnf("[ws] req=%v, read error=", req, err)
+					log.Warnf("[ws] req=%v, read error=%v", req, err)
 					break
 				} else if n > 0 {
 					body := frame[0:n]
@@ -106,7 +106,7 @@ func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 					}
 					//log.Warnf("[ws] tag=%s, req=%v, read body=%s", route.Tag, req, string(body))
 					if _, err := conn.Write(body); err != nil {
-						log.Warnf("[ws] req=%v, write error=", req, err)
+						log.Warnf("[ws] req=%v, write error=%v", req, err)
 						break
 					}
 				}
