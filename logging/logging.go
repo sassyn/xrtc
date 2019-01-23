@@ -330,7 +330,7 @@ func (level Level) String() string {
 	case InfoLevel:
 		return "info"
 	case WarnLevel:
-		return "warning"
+		return "warn"
 	case ErrorLevel:
 		return "error"
 	case FatalLevel:
@@ -415,6 +415,27 @@ func Warnf(format string, v ...interface{}) {
 // Arguments are handled in the manner of fmt.Println.
 func Warnln(v ...interface{}) {
 	std.SetLevel(WarnLevel)
+	std.Output(2, fmt.Sprintln(v...))
+}
+
+// Error calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Print.
+func Error(v ...interface{}) {
+	std.SetLevel(ErrorLevel)
+	std.Output(2, fmt.Sprint(v...))
+}
+
+// Errorf calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Printf.
+func Errorf(format string, v ...interface{}) {
+	std.SetLevel(ErrorLevel)
+	std.Output(2, fmt.Sprintf(format, v...))
+}
+
+// Errorln calls Output to print to the standard logger.
+// Arguments are handled in the manner of fmt.Println.
+func Errorln(v ...interface{}) {
+	std.SetLevel(ErrorLevel)
 	std.Output(2, fmt.Sprintln(v...))
 }
 

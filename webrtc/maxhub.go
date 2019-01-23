@@ -11,7 +11,7 @@ import (
 
 type OneServer interface {
 	Run()
-	Exit()
+	Close()
 	Params() *NetParams
 }
 
@@ -243,9 +243,9 @@ func (h *MaxHub) Candidates() []string {
 	return candidates
 }
 
-func (h *MaxHub) Exit() {
+func (h *MaxHub) Close() {
 	for _, svr := range h.servers {
-		svr.Exit()
+		svr.Close()
 	}
 	h.exitTick <- true
 	h.cache.Close()
@@ -254,27 +254,31 @@ func (h *MaxHub) Exit() {
 func (h *MaxHub) Run() {
 	log.Println("[maxhub] Run begin")
 
-	go h.loopForOuter()
+	errCh := make(chan error)
 
-	for {
+	go h.loopForOuter(errCh)
+
+	quit := false
+	for !quit {
 		select {
 		case msg, ok := <-h.chanAdmin:
 			if ok {
 				h.OnAdminData(msg.(*HubMessage))
 			}
 		case <-h.exitTick:
-			close(h.exitTick)
+			quit = true
+			errCh <- nil
 			log.Println("hub exit...")
-			return
 		}
 	}
 	log.Println("[maxhub] Run end")
 }
 
-func (h *MaxHub) loopForOuter() {
+func (h *MaxHub) loopForOuter(errCh chan error) {
 	tickChan := time.NewTicker(time.Second * 30).C
 
-	for {
+	quit := false
+	for !quit {
 		select {
 		case msg, ok := <-h.chanRecvFromOuter:
 			if ok {
@@ -283,6 +287,8 @@ func (h *MaxHub) loopForOuter() {
 		case <-tickChan:
 			h.clearConnections()
 			h.clearUsers()
+		case <-errCh:
+			quit = true
 		}
 	}
 }

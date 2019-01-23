@@ -17,7 +17,6 @@
 # TODO
 
 - [ ] Support `upstream` mode="random/cycle/sticky"
-- [ ] HTTP config parameters (`max_conns/dial_timeout/..`)
 - [ ] Jitsi WebRTC server support
 
 
@@ -194,6 +193,13 @@ services:
     http:
       servername: _
       root: /tmp/html
+      max_conns:                  500
+      idle_conn_timeout:          30s
+      dial_timeout:               10s
+      response_header_timeout:    300s
+      keepalive_timeout:          1200s
+      flush_interval:             100ms
+      global_flush_interval:      100ms
       routes:
         janus:
           upstream: http://upstream_janus1

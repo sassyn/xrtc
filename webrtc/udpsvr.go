@@ -49,11 +49,12 @@ func (u *UdpServer) Params() *NetParams {
 	return &u.config.Net
 }
 
-func (u *UdpServer) Exit() {
+func (u *UdpServer) Close() {
 }
 
 func (u *UdpServer) Run() {
 	defer u.conn.Close()
+
 	log.Println("[udp] main begin")
 
 	// write goroutine
@@ -75,6 +76,7 @@ func (u *UdpServer) Run() {
 	}
 
 	u.exitTick <- true
+
 	log.Println("[udp] main end")
 }
 
@@ -102,7 +104,6 @@ func (u *UdpServer) writing() {
 		case <-tickChan:
 			log.Printf("[udp] statistics, sendCount=%d, recvCount=%d\n", u.sendCount, u.recvCount)
 		case <-u.exitTick:
-			close(u.exitTick)
 			log.Println("[udp] udp exit writing")
 			return
 		}

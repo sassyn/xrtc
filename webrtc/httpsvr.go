@@ -78,7 +78,7 @@ func (s *HttpServer) Run() {
 	}
 }
 
-func (s *HttpServer) Exit() {
+func (s *HttpServer) Close() {
 	//s.ln.Close()
 }
 

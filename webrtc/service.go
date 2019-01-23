@@ -8,11 +8,12 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/nice"
 	"github.com/PeterXu/xrtc/util"
 )
 
 type Service struct {
-	agent *Agent
+	agent *nice.Agent
 	user  *User
 
 	// when iceDirect == true
@@ -63,7 +64,7 @@ func (s *Service) Init(ufrag, pwd, remote string) bool {
 	}
 
 	//iceDebugEnable(true)
-	s.agent, _ = NewAgent()
+	s.agent, _ = nice.NewAgent()
 	s.agent.SetMinMaxPort(40000, 50000)
 	s.agent.SetLocalCredentials(ufrag, pwd)
 	if err := s.agent.GatherCandidates(); err != nil {
@@ -104,7 +105,7 @@ func (s *Service) sendData(data []byte) {
 	if s.agent != nil {
 		s.agent.Send(data)
 	} else {
-		if !s.user.iceDirect {
+		if !s.user.isIceDirect() {
 			log.Warnln("[service] not agent/iceDirect")
 			return
 		}
@@ -112,7 +113,7 @@ func (s *Service) sendData(data []byte) {
 	}
 }
 
-func (s *Service) eventChannel() chan *GoEvent {
+func (s *Service) eventChannel() chan *nice.GoEvent {
 	if s.agent != nil {
 		return s.agent.EventChannel
 	} else {
@@ -258,7 +259,8 @@ func (s *Service) iceLoop(retCh chan error) {
 	}(errCh)
 
 	// write loop
-	for {
+	quit := false
+	for !quit {
 		select {
 		case data := <-s.iceOutChan:
 			var nb int
@@ -275,10 +277,12 @@ func (s *Service) iceLoop(retCh chan error) {
 				_ = nb
 			}
 		case err := <-errCh:
+			quit = true
 			log.Warnln("[service] read data err:", err)
-			return
 		}
 	}
+
+	s.exitTick <- true
 }
 
 func (s *Service) Run() {
@@ -289,37 +293,38 @@ func (s *Service) Run() {
 
 	tickChan := time.NewTicker(time.Second * 10).C
 
-	for {
+	quit := false
+	for !quit {
 		select {
 		case msg, ok := <-s.ChanRecv():
-			if !ok {
+			if ok {
+				if data, isok := msg.([]byte); isok {
+					//log.Println("[service] forward data to inner, size=", len(data))
+					s.sendData(data)
+				}
+			} else {
+				quit = true
 				log.Println("[service] close chanRecv")
-				return
 			}
-			if data, ok := msg.([]byte); ok {
-				//log.Println("[service] forward data to inner, size=", len(data))
-				s.sendData(data)
-			}
-			continue
 		case cand := <-s.candidateChannel():
 			//log.Println("[service] agent candidate:", cand)
 			// send to server
 			_ = cand
-			continue
 		case e := <-s.eventChannel():
-			if e.Event == EventNegotiationDone {
+			if e.Event == nice.EventNegotiationDone {
 				log.Println("[service] agent negotiation done")
 				// dtls handshake/sctp
 				//s.agent.Send([]byte("hello"))
-			} else if e.Event == EventStateChanged {
+			} else if e.Event == nice.EventStateChanged {
 				switch e.State {
-				case EventStateNiceDisconnected:
+				case nice.EventStateNiceDisconnected:
 					s.ready = false
 					log.Println("[service] agent ice disconnected")
-				case EventStateNiceConnected:
+					quit = true
+				case nice.EventStateNiceConnected:
 					s.ready = true
 					log.Println("[service] agent ice connected")
-				case EventStateNiceReady:
+				case nice.EventStateNiceReady:
 					s.ready = true
 					log.Println("[service] agent ice ready")
 				default:
@@ -329,21 +334,18 @@ func (s *Service) Run() {
 			} else {
 				log.Warnln("[service] unknown agent event:", e)
 			}
-			continue
 		case d := <-s.dataChannel():
 			// dtls handshake/sctp
 			//log.Println("[service] agent received:", len(d))
 			s.onRecvData(d)
-			continue
 		case <-tickChan:
 			//log.Printf("[service] agent[%s] statistics, sendCount=%d, recvCount=%d\n", agentKey, s.sendCount, s.recvCount)
-			continue
 		case <-s.exitTick:
-			close(s.exitTick)
-			break
+			quit = true
 		}
-		break
 	}
+
+	s.user.onServiceClose()
 	log.Println("[service] end")
 }
 

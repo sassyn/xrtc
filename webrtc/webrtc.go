@@ -8,8 +8,7 @@ import (
 
 const kDefaultConfig = "/tmp/etc/routes.yml"
 
-// external interfaces
-
+// Webrtc control interfaces
 const (
 	WebrtcActionUnknown = iota
 	WebrtcActionOffer
@@ -32,7 +31,7 @@ func NewWebrtcActionMessage(wa *WebrtcAction) interface{} {
 type Webrtc interface {
 	ChanAdmin() chan interface{}
 	Candidates() []string // xRTC candidates for WebRTC client
-	Exit()
+	Close()
 }
 
 // gloabl variables
@@ -44,7 +43,7 @@ var gConfig *Config
 func loadConfig(fname string) {
 	config := NewConfig()
 	if !config.Load(fname) {
-		log.Fatalf("read config failed")
+		log.Fatal("read config failed")
 		return
 	}
 	gConfig = config

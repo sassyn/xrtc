@@ -1,4 +1,4 @@
-package webrtc
+package nice
 
 import (
 	"testing"

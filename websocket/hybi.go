@@ -1,8 +1,10 @@
 // Copyright 2011 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+//
+// Based-on https://github.com/golang/net/websocket/hybi.go
 
-package webrtc
+package websocket
 
 // This file implements a protocol of hybi draft.
 // http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-17
@@ -392,8 +394,8 @@ func newHybiClientConn(buf *bufio.ReadWriter) *WsConn {
 	return newHybiConn(buf, false)
 }
 
-// newHybiServerConn returns a new WebSocket connection speaking hybi draft protocol.
-func newHybiServerConn(buf *bufio.ReadWriter) *WsConn {
+// NewHybiServerConn returns a new WebSocket connection speaking hybi draft protocol.
+func NewHybiServerConn(buf *bufio.ReadWriter) *WsConn {
 	return newHybiConn(buf, true)
 }
 

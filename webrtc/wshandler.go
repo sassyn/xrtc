@@ -10,6 +10,7 @@ import (
 	"time"
 
 	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/websocket"
 )
 
 type dialFunc func(network, address string) (net.Conn, error)
@@ -86,7 +87,7 @@ func newWSHandler(route *RouteTarget, host string, dial dialFunc) http.Handler {
 		errc := make(chan error, 2)
 		cp := func(dst io.Writer, src io.Reader, req bool) {
 			rw := bufio.NewReadWriter(bufio.NewReader(src), bufio.NewWriter(dst))
-			conn := newHybiServerConn(rw)
+			conn := websocket.NewHybiServerConn(rw)
 			frame := make([]byte, 256*1024)
 			for {
 				if n, err := conn.ReadFrame(frame[0:]); err != nil {

@@ -128,7 +128,7 @@ func (s *TcpServer) Run() {
 	}
 }
 
-func (s *TcpServer) Exit() {
+func (s *TcpServer) Close() {
 }
 
 // webrtc tcp data format: len(2B) + data(..)
@@ -234,6 +234,7 @@ func (h *TcpHandler) Process() bool {
 
 func (h *TcpHandler) ServeTCP() {
 	defer h.conn.Close()
+
 	log.Println("[ice-tcp-svr] tcp main begin")
 
 	// write goroutine
@@ -269,6 +270,7 @@ func (h *TcpHandler) writing() {
 	raddrStr := "client"
 	//raddrStr := util.NetAddrString(h.conn.RemoteAddr())
 	tickChan := time.NewTicker(time.Second * 10).C
+
 	for {
 		select {
 		case msg, ok := <-h.chanRecv:
@@ -291,7 +293,6 @@ func (h *TcpHandler) writing() {
 		case <-tickChan:
 			log.Printf("[ice-tcp-svr] statistics[%s], sendCount=%d, recvCount=%d\n", raddrStr, h.sendCount, h.recvCount)
 		case <-h.exitTick:
-			close(h.exitTick)
 			log.Println("[ice-tcp-svr] tcp exit writing")
 			return
 		}

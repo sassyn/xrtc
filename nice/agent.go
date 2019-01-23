@@ -1,4 +1,8 @@
-package webrtc
+// Package nice binds libnice with golang to manage ice connection.
+//
+// Based-on https://github.com/xhs/goblice
+
+package nice
 
 /*
 #cgo pkg-config: nice

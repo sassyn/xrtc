@@ -13,6 +13,7 @@ type User struct {
 	chanSend    chan interface{}       // data to inner
 	service     *Service               // inner webrtc server
 
+	leave      bool
 	activeConn *Connection // active conn
 	sendUfrag  string
 	sendPasswd string
@@ -113,11 +114,18 @@ func (u *User) delConnection(conn *Connection) {
 }
 
 func (u *User) sendToInner(conn *Connection, data []byte) {
+	if u.leave {
+		return
+	}
 	u.activeConn = conn
 	u.chanSend <- data
 }
 
 func (u *User) sendToOuter(data []byte) {
+	if u.leave {
+		return
+	}
+
 	if u.activeConn == nil {
 		for k, v := range u.connections {
 			if v.isReady() {
@@ -145,12 +153,17 @@ func (u *User) isTimeout() bool {
 
 func (u *User) dispose() {
 	log.Println("[user] dispose, connection size=", len(u.connections))
+	u.leave = true
 	if u.service != nil {
 		u.service.dispose()
 	}
 	if len(u.connections) > 0 {
 		u.connections = make(map[string]*Connection)
 	}
+}
+
+func (u *User) onServiceClose() {
+	u.leave = true
 }
 
 func (u *User) startService(host string, candidates []string) bool {

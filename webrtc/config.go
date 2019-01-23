@@ -33,79 +33,37 @@ func NewConfig() *Config {
 	}
 }
 
-// YamlKeys return the key list of one yaml.Map node.
-func YamlKeys(node yaml.Map) []string {
-	var keys []string
-	for k, _ := range node {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// IsYamlMap convert to a yaml.Map node.
-func IsYamlMap(node yaml.Node) (yaml.Map, error) {
-	if m, ok := node.(yaml.Map); ok {
-		return m, nil
-	}
-	return nil, errors.New("Not yaml.Map")
-}
-
-// IsYamlMap convert to a yaml.List node.
-func IsYamlList(node yaml.Node) (yaml.List, error) {
-	if l, ok := node.(yaml.List); ok {
-		return l, nil
-	}
-	return nil, errors.New("Not yaml.List")
-}
-
-// IsYamlMap convert to a yaml.Scalar node.
-func IsYamlScalar(node yaml.Node) (yaml.Scalar, error) {
-	if s, ok := node.(yaml.Scalar); ok {
-		return s, nil
-	}
-	return "", errors.New("Not yaml.Scalar")
-}
-
-// IsYamlMap convert a yaml.Scalar to a string.
-func IsYamlString(node yaml.Node) string {
-	if s, err := IsYamlScalar(node); err != nil {
-		return ""
-	} else {
-		return strings.TrimSpace(s.String())
-	}
-}
-
 // Load loads all service from config file.
 func (c *Config) Load(fname string) bool {
 	ycfg, err := yaml.ReadFile(fname)
 	if err != nil {
-		log.Fatal("[config] read failed, err=", err)
+		log.Error("[config] read failed, err=", err)
 		return false
 	}
 
 	var services yaml.Map
 
 	// check root and services
-	if root, err := IsYamlMap(ycfg.Root); err != nil {
-		log.Fatal("[config] check root, err=", err)
+	if root, err := yaml.ToMap(ycfg.Root); err != nil {
+		log.Error("[config] check root, err=", err)
 		return false
 	} else {
-		if services, err = IsYamlMap(root.Key("services")); err != nil {
-			log.Fatal("[config] check services, err=", err)
+		if services, err = yaml.ToMap(root.Key("services")); err != nil {
+			log.Error("[config] check services, err=", err)
 			return false
 		}
 	}
 
 	// check services
-	for _, key := range YamlKeys(services) {
-		service, err := IsYamlMap(services.Key(key))
+	for _, key := range yaml.Keys(services) {
+		service, err := yaml.ToMap(services.Key(key))
 		if err != nil {
 			log.Warn("[config] check service [", key, "], err=", err)
 			continue
 		}
 
 		var proto yaml.Scalar
-		if proto, err = IsYamlScalar(service.Key("proto")); err != nil {
+		if proto, err = yaml.ToScalar(service.Key("proto")); err != nil {
 			log.Warn("[config] check service proto, err=", err)
 			continue
 		}
@@ -114,7 +72,7 @@ func (c *Config) Load(fname string) bool {
 
 		if proto.String() == "upstream" {
 			var servers yaml.List
-			if servers, err = IsYamlList(service.Key("servers")); err != nil {
+			if servers, err = yaml.ToList(service.Key("servers")); err != nil {
 				log.Warn("[config] check upstream servers, err=", err)
 				continue
 			}
@@ -127,7 +85,7 @@ func (c *Config) Load(fname string) bool {
 		}
 
 		var netp yaml.Map
-		if netp, err = IsYamlMap(service.Key("net")); err != nil {
+		if netp, err = yaml.ToMap(service.Key("net")); err != nil {
 			log.Warn("[config] check service net, err=", err)
 			continue
 		}
@@ -140,11 +98,11 @@ func (c *Config) Load(fname string) bool {
 		case "tcp":
 			tcpsvr := NewTCPConfig(key)
 			tcpsvr.Net.Load(netp, "tcp")
-			enableHttp := IsYamlString(service.Key("enable_http"))
+			enableHttp := yaml.ToString(service.Key("enable_http"))
 			//log.Println("[config] check tcp's enable_http=", enableHttp)
 			tcpsvr.EnableHttp = (enableHttp == "true")
 			if tcpsvr.EnableHttp {
-				if httpp, err := IsYamlMap(service.Key("http")); err == nil {
+				if httpp, err := yaml.ToMap(service.Key("http")); err == nil {
 					tcpsvr.Http.Load(httpp)
 				}
 			}
@@ -152,7 +110,7 @@ func (c *Config) Load(fname string) bool {
 		case "http":
 			httpsvr := NewHTTPConfig(key)
 			httpsvr.Net.Load(netp, "")
-			if httpp, err := IsYamlMap(service.Key("http")); err == nil {
+			if httpp, err := yaml.ToMap(service.Key("http")); err == nil {
 				httpsvr.Http.Load(httpp)
 			}
 			c.HttpServers[key] = httpsvr
@@ -188,8 +146,8 @@ func NewUPSConfig() *UPSConfig {
 
 func (u *UPSConfig) Load(node yaml.List) {
 	for _, s := range node {
-		if _, err := IsYamlScalar(s); err == nil {
-			svr := IsYamlString(s)
+		if _, err := yaml.ToScalar(s); err == nil {
+			svr := yaml.ToString(s)
 			if uri, err := url.Parse(svr); err == nil {
 				switch {
 				case uri.Scheme == "http" || uri.Scheme == "https":
@@ -220,11 +178,11 @@ type NetParams struct {
 
 // Load loads the "net:" parameters under one service.
 func (n *NetParams) Load(node yaml.Map, proto string) {
-	n.Addr = IsYamlString(node.Key("addr"))
-	n.TlsCrtFile = IsYamlString(node.Key("tls_crt_file"))
-	n.TlsKeyFile = IsYamlString(node.Key("tls_key_file"))
+	n.Addr = yaml.ToString(node.Key("addr"))
+	n.TlsCrtFile = yaml.ToString(node.Key("tls_crt_file"))
+	n.TlsKeyFile = yaml.ToString(node.Key("tls_key_file"))
 
-	n.EnableIce = (IsYamlString(node.Key("enable_ice")) == "true")
+	n.EnableIce = (yaml.ToString(node.Key("enable_ice")) == "true")
 	for n.EnableIce {
 		var port string
 		var err error
@@ -233,11 +191,11 @@ func (n *NetParams) Load(node yaml.Map, proto string) {
 			break
 		}
 		var ips yaml.List
-		if ips, err = IsYamlList(node.Key("candidate_ips")); err != nil {
+		if ips, err = yaml.ToList(node.Key("candidate_ips")); err != nil {
 			break
 		}
 		for idx, ip := range ips {
-			szip0 := IsYamlString(ip)
+			szip0 := yaml.ToString(ip)
 			if len(szip0) == 0 {
 				continue
 			}
@@ -372,17 +330,25 @@ type STSHeader struct {
 
 // Load loads the http parameters(routes/..) under a service.
 func (h *HttpParams) Load(node yaml.Map) {
-	h.Servername = IsYamlString(node.Key("servername"))
+	h.Servername = yaml.ToString(node.Key("servername"))
 	if len(h.Servername) == 0 {
 		h.Servername = "_"
 	}
 
-	h.Root = IsYamlString(node.Key("root"))
+	h.Root = yaml.ToString(node.Key("root"))
 	if len(h.Root) == 0 {
 		h.Root = "/tmp"
 	}
 
-	if routes, err := IsYamlMap(node.Key("routes")); err == nil {
+	h.MaxConns = yaml.ToInt(node.Key("max_conns"), h.MaxConns)
+	h.IdleConnTimeout = yaml.ToDuration(node.Key("idle_conn_timeout"), h.IdleConnTimeout)
+	h.DialTimeout = yaml.ToDuration(node.Key("dial_timeout"), h.DialTimeout)
+	h.ResponseHeaderTimeout = yaml.ToDuration(node.Key("response_header_timeout"), h.ResponseHeaderTimeout)
+	h.KeepAliveTimeout = yaml.ToDuration(node.Key("keepalive_timeout"), h.KeepAliveTimeout)
+	h.FlushInterval = yaml.ToDuration(node.Key("flush_interval"), h.FlushInterval)
+	h.GlobalFlushInterval = yaml.ToDuration(node.Key("global_flush_interval"), h.GlobalFlushInterval)
+
+	if routes, err := yaml.ToMap(node.Key("routes")); err == nil {
 		h.loadHttpRoutes(routes)
 	}
 	log.Println("[config] http parameters:", h)
@@ -391,7 +357,7 @@ func (h *HttpParams) Load(node yaml.Map) {
 func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 	//log.Println("[config] load routes, ", node)
 	for tag, v := range node {
-		item, err := IsYamlMap(v)
+		item, err := yaml.ToMap(v)
 		if err != nil {
 			log.Warnln("[config] http routes, invalid routes:", v)
 			break
@@ -404,47 +370,47 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 		for prop, v := range item {
 			switch prop {
 			case "upstream":
-				if _, err := IsYamlScalar(v); err == nil {
-					table.UpStreamId = IsYamlString(v)
+				if _, err := yaml.ToScalar(v); err == nil {
+					table.UpStreamId = yaml.ToString(v)
 				} else {
 					log.Warn("[config] http routes, invalid upstream=", v)
 				}
 			case "icetcp":
-				if _, err := IsYamlScalar(v); err == nil {
-					table.IceTcp = (IsYamlString(v) == "true")
+				if _, err := yaml.ToScalar(v); err == nil {
+					table.IceTcp = (yaml.ToString(v) == "true")
 				} else {
 					log.Warn("[config] http routes, invalid iceTcp=", v)
 				}
 			case "icedirect":
-				if _, err := IsYamlScalar(v); err == nil {
-					table.IceDirect = (IsYamlString(v) == "true")
+				if _, err := yaml.ToScalar(v); err == nil {
+					table.IceDirect = (yaml.ToString(v) == "true")
 				} else {
 					log.Warn("[config] http routes, invalid iceDirect=", v)
 				}
 			case "hosts":
-				if hosts, err := IsYamlList(v); err == nil {
+				if hosts, err := yaml.ToList(v); err == nil {
 					for _, host := range hosts {
-						h.HostRoutes[IsYamlString(host)] = table
+						h.HostRoutes[yaml.ToString(host)] = table
 					}
 				} else {
 					log.Warn("[config] http routes, invalid hosts=", v)
 				}
 			case "protos":
-				if protos, err := IsYamlList(v); err == nil {
+				if protos, err := yaml.ToList(v); err == nil {
 					for _, proto := range protos {
-						h.ProtoRoutes[IsYamlString(proto)] = table
+						h.ProtoRoutes[yaml.ToString(proto)] = table
 					}
 				} else {
 					log.Warn("[config] http routes, invalid protos=", v)
 				}
 			case "paths":
-				if paths, err := IsYamlList(v); err == nil {
+				if paths, err := yaml.ToList(v); err == nil {
 					for _, path := range paths {
-						if _, err := IsYamlScalar(path); err == nil {
-							table.Paths = append(table.Paths, util.StringPair{IsYamlString(path), ""})
-						} else if pair, err := IsYamlMap(path); err == nil {
+						if _, err := yaml.ToScalar(path); err == nil {
+							table.Paths = append(table.Paths, util.StringPair{yaml.ToString(path), ""})
+						} else if pair, err := yaml.ToMap(path); err == nil {
 							for k, v := range pair {
-								table.Paths = append(table.Paths, util.StringPair{k, IsYamlString(v)})
+								table.Paths = append(table.Paths, util.StringPair{k, yaml.ToString(v)})
 							}
 						} else {
 							log.Warn("[config] http routes, invalid path=", path)
@@ -467,18 +433,18 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 func (h *HttpParams) InitUpstream(upstreams map[string]*UPSConfig) {
 	for _, table := range h.Routes {
 		if uri, err := url.Parse(table.UpStreamId); err != nil {
-			log.Fatal("[config] invalid upstreamId=", table.UpStreamId, err)
+			log.Error("[config] invalid upstreamId=", table.UpStreamId, err)
 			break
 		} else {
 			if uri.Scheme != "http" && uri.Scheme != "https" {
-				log.Fatal("[config] only support http(s):// in upstream")
+				log.Error("[config] only support http(s):// in upstream")
 				break
 			}
 
 			var host, port string
 			hostPort := strings.Split(uri.Host, ":")
 			if len(hostPort) > 2 {
-				log.Fatal("[config] invalid host in upstreamId=", table.UpStreamId)
+				log.Error("[config] invalid host in upstreamId=", table.UpStreamId)
 				break
 			} else if len(hostPort) == 2 {
 				host = hostPort[0]
@@ -488,7 +454,7 @@ func (h *HttpParams) InitUpstream(upstreams map[string]*UPSConfig) {
 			}
 			if stream, ok := upstreams[host]; ok {
 				if len(port) > 0 {
-					log.Fatal("[config] upstreamId should not contain port:", table.UpStreamId)
+					log.Error("[config] upstreamId should not contain port:", table.UpStreamId)
 					break
 				}
 				table.UpStream = stream

@@ -16,7 +16,7 @@ func main() {
 	hub := webrtc.Inst()
 
 	exit.Listen(func(s os.Signal) {
-		hub.Exit()
+		hub.Close()
 	})
 
 	exit.Wait()
