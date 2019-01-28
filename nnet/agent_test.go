@@ -1,4 +1,4 @@
-package nice
+package nnet
 
 import (
 	"testing"

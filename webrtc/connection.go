@@ -14,11 +14,10 @@ const kDefaultConnectionTimeout = 30 * 1000 // ms
 
 type Connection struct {
 	addr     net.Addr
-	chanSend chan interface{}
+	misc     *NetMisc
 	user     *User
-
-	// dtls/datachannel
-	dcep *nnet.DcPeer
+	dcpeer   *nnet.DcPeer // dtls/datachannel
+	dtlsChan chan []byte
 
 	ready                  bool
 	stunRequesting         uint32
@@ -30,8 +29,9 @@ type Connection struct {
 	ctime uint32 // create time
 }
 
-func NewConnection(addr net.Addr, chanSend chan interface{}) *Connection {
-	c := &Connection{addr: addr, chanSend: chanSend, utime: util.NowMs(), ctime: util.NowMs()}
+func NewConnection(addr net.Addr, misc *NetMisc) *Connection {
+	c := &Connection{addr: addr, misc: misc, utime: util.NowMs(), ctime: util.NowMs()}
+	c.dtlsChan = make(chan []byte)
 	c.ready = false
 	c.hadStunChecking = false
 	c.hadStunBindingResponse = false
@@ -89,19 +89,31 @@ func (c *Connection) onRecvData(data []byte) {
 			log.Warnln("[conn] unknown stun message=", msg.Dtype)
 		}
 	} else {
-		// dtls handshake
+		// dtls handshake/srtp/srtcp
 		//log.Println("[conn] recv dtls/rtp/rtcp, len=", len(data))
 		if c.user.isProxy() {
-			// rtp/rtcp data to inner
+			// forward to inner
 			c.ready = true
 			c.user.sendToInner(c, data)
 		} else {
+			if c.dcpeer == nil {
+				var err error
+				tlsPem := c.misc.TlsPem
+				c.dcpeer, err = nnet.NewDcPeer(tlsPem.CrtFile, tlsPem.KeyFile, "")
+				if c.dcpeer == nil {
+					log.Errorln("[conn] fail to NewDcPeer:", err)
+					return
+				}
+				c.dcpeer.ParseOfferSdp(c.user.getOffer())
+				go c.dcpeer.Run(c.dtlsChan)
+			}
+			c.dtlsChan <- data
 		}
 	}
 }
 
 func (c *Connection) sendData(data []byte) bool {
-	c.chanSend <- NewHubMessage(data, nil, c.addr, nil)
+	c.misc.chanSend <- NewHubMessage(data, nil, c.addr, nil)
 	return true
 }
 

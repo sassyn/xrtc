@@ -92,6 +92,14 @@ func EncodeUmsResponse(resp *UmsResponseJson) []byte {
 	}
 }
 
+func GetEmptyUmsResponse() *UmsResponseJson {
+	resp, err := ParseUmsResponse([]byte(kEmptyUmsResponseJsonStr))
+	if err != nil {
+		return nil
+	}
+	return resp
+}
+
 func (r *UmsResponseJson) GetAnswer() string {
 	//log.Println("[json] ums response code:", r.Code)
 	user_roster := r.Action.UserRoster
@@ -128,9 +136,9 @@ func (r *UmsResponseJson) SetAnswer(data string) {
 
 type UmsChannel struct {
 	ChannelId     int    `json:"channel_id,omitempty"`
-	WebrtcOffer   string `json:"webrtc_offer"`
-	WebrtcServers string `json:"webrtc_servers"`
-	WebrtcAnswer  string `json:"webrtc_answer"`
+	WebrtcOffer   string `json:"webrtc_offer,omitempty"`
+	WebrtcServers string `json:"webrtc_servers,omitempty"`
+	WebrtcAnswer  string `json:"webrtc_answer,omitempty"`
 }
 
 type UmsAudioStatus struct {
@@ -160,3 +168,12 @@ type UmsResponseJson struct {
 	Code   string                 `json:"code"`
 	misc   map[string]interface{} `json:"-, omitempty"`
 }
+
+const kEmptyUmsResponseJsonStr string = `{
+"code": "RESPONSE_SUCCESS",
+"action" : {
+    "user_roster" : [
+        {"audio_status": {"channels" : [{"webrtc_answer" : "sdp answer"}]}}
+    ]
+}
+}`

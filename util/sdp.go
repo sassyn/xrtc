@@ -1,13 +1,23 @@
 package util
 
 import (
+	//"crypto/rsa"
+	"crypto/sha256"
+	//"crypto/tls"
+	"crypto/x509"
+	//"encoding/hex"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
 	"strings"
 
 	"github.com/PeterXu/xrtc/log"
 )
 
-const kSdpOwner string = "xwebrtc"
-const kSdpCname string = "xwebrtc_endpoint"
+const kSdpOwner string = "xrtc"
+const kSdpCname string = "xrtc_endpoint"
+const kAudioStreamLabel string = "stream_audio_label"
+const kAudioTrackLabel string = "track_audio_label"
 
 var kNewlineChar = []byte{'\n'}
 var kSpaceChar = []byte{' '}
@@ -36,6 +46,7 @@ type SdpMediaDirection int
 
 // These are different sdp directions: sendrecv/sendonly/recvonly/inactive
 const (
+	kDirectionUnknown  SdpMediaDirection = 0
 	kDirectionInactive SdpMediaDirection = iota
 	kDirectionSendOnly
 	kDirectionRecvOnly
@@ -181,13 +192,13 @@ type MediaAttr struct {
 	maxptime         int
 
 	// for anwser
-	av_rtpmaps   map[string]*RtpMapInfo
-	av_ice_ufrag string
-	av_ice_pwd   string
-	use_rtx      bool
-	use_red_fec  bool
-	use_red_rtx  bool
-	use_fid      bool
+	av_rtpmaps      map[string]*RtpMapInfo
+	use_rtx         bool
+	use_rtx_apt     bool
+	use_rtx_fid     bool
+	use_red_fec     bool
+	use_red_rtx     bool
+	use_red_rtx_apt bool
 }
 
 func (a *MediaAttr) GetSsrcs() *SSRC {
@@ -374,7 +385,7 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 			rmap := &RtpMapInfo{ptype: Atoi(attrs[0])}
 			props := strings.Split(attrs[1], "/")
 			if len(props) >= 2 {
-				rmap.codec = props[0]
+				rmap.codec = strings.ToLower(props[0])
 				rmap.frequency = Atoi(props[1])
 				if len(props) >= 3 {
 					rmap.channels = Atoi(props[2])
@@ -475,6 +486,14 @@ func (m *MediaSdp) parseSdp_a(line []byte, media *MediaAttr) {
 type MediaDesc struct {
 	Sdp        MediaSdp
 	haveAnswer bool
+
+	// sdp answer
+	av_agent        string
+	av_unified_plan bool
+	av_ice_ufrag    string
+	av_ice_pwd      string
+	av_fingerprint  StringPair // answer a=fingerprint:sha-256 ..
+	av_ssrcs        map[uint32]uint32
 }
 
 func (m *MediaDesc) Parse(data []byte) bool {
@@ -537,22 +556,46 @@ func (m *MediaDesc) GetCandidates() []string {
 	}
 }
 
-func (m *MediaDesc) CreateAnswer() bool {
-	var ret bool
-	send_ice_ufrag := "xrtc_" + RandomString(32)
-	send_ice_pwd := RandomString(24)
+func (m *MediaDesc) CreateAnswer(agent string, certFile string) bool {
+	switch agent {
+	case kFirefoxAgent:
+		m.av_unified_plan = true
+	case kChromeAgent:
+		m.av_unified_plan = false
+	default:
+		return false
+	}
+	m.av_agent = agent
+	m.av_ssrcs = make(map[uint32]uint32)
 
-	// select app
-	if len(m.Sdp.applications) > 0 {
-		for i := range m.Sdp.applications {
-			app := m.Sdp.applications[i]
-			app.av_ice_ufrag = send_ice_ufrag
-			app.av_ice_pwd = send_ice_pwd
-			ret = true
+	// create ufrag/pwd
+	m.av_ice_ufrag = "xrtc_" + RandomString(28)
+	m.av_ice_pwd = RandomString(24)
+
+	// create fingerprint
+	if cert, err := LoadX509Certificate(certFile); err == nil {
+		sum := sha256.Sum256(cert.Raw)
+		if len(sum) != sha256.Size {
+			log.Errorln("[sdp] fail to sha256.Sum256")
+			return false
 		}
+		prefix := ""
+		fingerprint := ""
+		for k := 0; k < sha256.Size; k++ {
+			fingerprint += fmt.Sprintf("%s%02X", prefix, sum[k])
+			prefix = ":"
+		}
+		// 32*2+31 = 95
+		log.Println("[sdp] fingerprint=", len(fingerprint), fingerprint)
+		m.av_fingerprint.First = "sha-256"
+		m.av_fingerprint.Second = fingerprint
+	} else {
+		log.Errorln("[sdp] fail to load x509:", err)
+		return false
 	}
 
-	// select audio
+	// pre-select each m=audio
+	log.Println("[sdp] check audios:", len(m.Sdp.audios))
 	if len(m.Sdp.audios) > 0 {
 		for i := range m.Sdp.audios {
 			have_opus := false
@@ -570,50 +613,81 @@ func (m *MediaDesc) CreateAnswer() bool {
 					break
 				}
 			}
-			if have_opus || have_isac {
-				audio.av_ice_ufrag = send_ice_ufrag
-				audio.av_ice_pwd = send_ice_pwd
-				ret = true
-				break
-			}
 		}
 	}
 
-	// select video
+	// pre-select in each m=video
+	log.Println("[sdp] check videos:", len(m.Sdp.videos))
 	if len(m.Sdp.videos) > 0 {
 		for i := range m.Sdp.videos {
 			have_h264 := false
+			have_red := false
+			have_fec := false
+
+			have_rtx := false
+			have_rtx_apt := false
+
 			video := m.Sdp.videos[i]
+
+			// select the first h264
 			for j := range video.rtpmaps {
 				rtpmap := video.rtpmaps[j]
-				if rtpmap.codec == "h264" {
-					have_h264 = true
-					video.av_rtpmaps["main"] = rtpmap.Clone()
-				} else if rtpmap.codec == "rtx" || rtpmap.codec == "red" || rtpmap.codec == "ulpfec" {
-					video.av_rtpmaps[rtpmap.codec] = rtpmap.Clone()
+				//log.Println("[sdp] check codec:", rtpmap.codec)
+				switch rtpmap.codec {
+				case "h264":
+					if !have_h264 {
+						have_h264 = true
+						video.av_rtpmaps["main"] = rtpmap.Clone()
+					}
+				case "red":
+					if !have_red {
+						have_red = true
+						video.av_rtpmaps[rtpmap.codec] = rtpmap.Clone()
+					}
+				case "ulpfec":
+					if !have_fec {
+						have_fec = true
+						video.av_rtpmaps[rtpmap.codec] = rtpmap.Clone()
+					}
+				}
+			}
+			main, _ := video.av_rtpmaps["main"]
+			if main == nil {
+				continue
+			}
+			//log.Println("[sdp] check main rtpmap:", main)
+
+			for j := range video.rtpmaps {
+				rtpmap := video.rtpmaps[j]
+				if rtpmap.codec == "rtx" {
+					if fmtp, ok := video.fmtps[rtpmap.ptype]; ok {
+						//log.Println("[sdp] check rtpmap:", rtpmap, fmtp)
+						if ptype, _ := fmtp.props["apt"]; ptype == main.ptype {
+							have_rtx = true
+							have_rtx_apt = true
+							main.apt_ptype = rtpmap.ptype
+							video.av_rtpmaps[rtpmap.codec] = rtpmap.Clone()
+							break
+						}
+					}
 				}
 			}
 
+			have_rtx_fid := (len(video.fid_ssrcs) > 0)
 			if have_h264 {
 				// hardcode to select supported features
-				video.use_rtx = true
+				video.use_rtx = have_rtx
+				video.use_rtx_apt = have_rtx_apt
+				video.use_rtx_fid = have_rtx_fid
 				video.use_red_fec = false
 				video.use_red_rtx = false
-				video.use_fid = false
-				if len(video.fid_ssrcs) > 0 {
-					video.use_fid = true
-				}
-
-				video.av_ice_ufrag = send_ice_ufrag
-				video.av_ice_pwd = send_ice_pwd
-				ret = true
-				break
+				video.use_red_rtx_apt = false
 			}
 		}
 	}
 
-	m.haveAnswer = ret
-	return ret
+	m.haveAnswer = true
+	return true
 }
 
 func (m *MediaDesc) ParseDrection(direction SdpMediaDirection) string {
@@ -666,7 +740,6 @@ func (m *MediaDesc) AnswerSdp() string {
 	log.Println("[desc] all bundles: ", m.Sdp.group_bundles)
 
 	var body []string
-	var oldSdp bool = true
 	for i := range m.Sdp.group_bundles {
 		bundle := m.Sdp.group_bundles[i]
 		bundles += " " + bundle
@@ -681,23 +754,29 @@ func (m *MediaDesc) AnswerSdp() string {
 				if rtpmap != nil {
 					mline += " " + Itoa(rtpmap.ptype)
 				}
-				mline += " 126" // add telephone-event
+				mline += " 126" // add telephone-event payload-type
 				body = append(body, mline)
 				body = append(body, "c=IN IP4 0.0.0.0")
-				body = append(body, "a=ice-ufrag:"+audio.av_ice_ufrag)
-				body = append(body, "a=ice-pwd:"+audio.av_ice_pwd)
-				body = append(body, "a=fingerprint:"+audio.fingerprint.ToStringBySpace())
+				//body = append(body, "a=rtcp:1 IN IP4 0.0.0.0")
+				body = append(body, "a=ice-ufrag:"+m.av_ice_ufrag)
+				body = append(body, "a=ice-pwd:"+m.av_ice_pwd)
+				body = append(body, "a=fingerprint:"+m.av_fingerprint.ToString(" "))
 				body = append(body, "a=setup:passive")
-				aextmap := "a=extmap:"
+				// set a=extmap:
 				for k := range audio.extmaps {
 					extmap := audio.extmaps[k]
 					if strings.Contains(extmap.uri, "ssrc-audio-level") {
-						aextmap += " " + Itoa(extmap.id) + " " + extmap.uri
+						aextmap := "a=extmap:" + Itoa(extmap.id) + " " + extmap.uri
+						body = append(body, aextmap)
 					}
 				}
-				body = append(body, aextmap)
-				if adir := m.ParseDrection(audio.direction); len(adir) > 0 {
-					body = append(body, adir)
+				// set audio a=sendrecv
+				if rtpmap == nil {
+					body = append(body, "a=inactive")
+				} else {
+					if adir := m.ParseDrection(audio.direction); len(adir) > 0 {
+						body = append(body, "a="+adir)
+					}
 				}
 				body = append(body, "a=mid:"+bundle)
 				body = append(body, "a=rtcp-mux")
@@ -711,22 +790,25 @@ func (m *MediaDesc) AnswerSdp() string {
 					if rtpmap.codec == "opus" {
 						afmtp := "a=fmtp:" + Itoa(rtpmap.ptype) + " minptime=20;useinbandfec=1;usedtx=0"
 						body = append(body, afmtp)
+
+						if audio.maxptime > 0 {
+							body = append(body, "a=maxptime:"+Itoa(audio.maxptime))
+						} else {
+							body = append(body, "a=maxptime:60")
+						}
 					}
 				}
-				body = append(body, "a=maxptime:60")
 				body = append(body, "a=rtpmap:126 telephone-event/8000")
-				if oldSdp {
-					semantics += " stream_audio_label"
-					body = append(body, "a=ssrc:1 cname:"+kSdpCname)
-					body = append(body, "a=ssrc:1 msid:stream_audio_label track_audio_label")
-					body = append(body, "a=ssrc:1 mslabel:stream_audio_label")
-					body = append(body, "a=ssrc:1 label:track_audio_label")
+
+				semantics += " " + kAudioStreamLabel
+				body = append(body, "a=ssrc:1 cname:"+kSdpCname)
+				if !m.av_unified_plan {
+					body = append(body, "a=ssrc:1 msid:"+kAudioStreamLabel+" "+kAudioTrackLabel)
+					body = append(body, "a=ssrc:1 mslabel:"+kAudioStreamLabel)
+					body = append(body, "a=ssrc:1 label:"+kAudioTrackLabel)
 				} else {
-					semantics += " {stream_audio_label}"
-					body = append(body, "a=msid:{stream_audio_label} {track_audio_label}")
-					body = append(body, "a=ssrc:1 cname:{"+kSdpCname+"}")
+					body = append(body, "a=msid:"+kAudioStreamLabel+" "+kAudioTrackLabel)
 				}
-				break
 			}
 		}
 
@@ -736,20 +818,20 @@ func (m *MediaDesc) AnswerSdp() string {
 			if app.mid == bundle {
 				body = append(body, "m=application 9 "+app.proto+" "+app.ptypes[0])
 				body = append(body, "c=IN IP4 0.0.0.0")
-				body = append(body, "a=ice-ufrag:"+app.av_ice_ufrag)
-				body = append(body, "a=ice-pwd:"+app.av_ice_pwd)
-				body = append(body, "a=fingerprint:"+app.fingerprint.ToStringBySpace())
+				body = append(body, "a=ice-ufrag:"+m.av_ice_ufrag)
+				body = append(body, "a=ice-pwd:"+m.av_ice_pwd)
+				body = append(body, "a=fingerprint:"+m.av_fingerprint.ToString(" "))
 				body = append(body, "a=setup:passive")
-				body = append(body, "a=mid:"+bundle)
+
 				if adir := m.ParseDrection(app.direction); len(adir) > 0 {
-					body = append(body, adir)
+					body = append(body, "a="+adir)
 				}
+				body = append(body, "a=mid:"+bundle)
 				if app.sctp.is_sctpmap {
 					body = append(body, "a=sctpmap:"+Itoa(app.sctp.port)+" "+app.sctp.name+" "+Itoa(app.sctp.number))
 				} else {
 					body = append(body, "a=sctp-port:"+Itoa(app.sctp.port))
 				}
-				break
 			}
 		}
 
@@ -764,14 +846,14 @@ func (m *MediaDesc) AnswerSdp() string {
 				mline := "m=video 1 " + video.proto
 				if rtpmap != nil {
 					mline += " " + Itoa(rtpmap.ptype)
-					if video.use_rtx {
+					if video.use_rtx && video.use_rtx_apt {
 						mline += " " + Itoa(rtpmap.apt_ptype)
 					}
 				}
 				if video.use_red_fec {
 					if redmap != nil && fecmap != nil {
 						mline += " " + Itoa(redmap.ptype)
-						if video.use_red_rtx {
+						if video.use_red_rtx && video.use_red_rtx_apt {
 							mline += " " + Itoa(redmap.apt_ptype)
 						}
 						mline += " " + Itoa(fecmap.ptype)
@@ -780,15 +862,38 @@ func (m *MediaDesc) AnswerSdp() string {
 				body = append(body, mline)
 
 				body = append(body, "c=IN IP4 0.0.0.0")
-				body = append(body, "b=AS:1500") // refine
-				body = append(body, "a=ice-ufrag:"+video.av_ice_ufrag)
-				body = append(body, "a=ice-pwd:"+video.av_ice_pwd)
-				body = append(body, "a=fingerprint:"+video.fingerprint.ToStringBySpace())
+				//body = append(body, "b=AS:1500") // refine
+				body = append(body, "a=ice-ufrag:"+m.av_ice_ufrag)
+				body = append(body, "a=ice-pwd:"+m.av_ice_pwd)
+				body = append(body, "a=fingerprint:"+m.av_fingerprint.ToString(" "))
 				body = append(body, "a=setup:passive")
-				body = append(body, "a=mid:"+bundle)
-				if adir := m.ParseDrection(video.direction); len(adir) > 0 {
-					body = append(body, adir)
+
+				// set a=extmap:
+				for k := range video.extmaps {
+					var aextmap string
+					extmap := video.extmaps[k]
+					if strings.Contains(extmap.uri, "urn:ietf:params:rtp-hdrext:toffset") {
+						aextmap = "a=extmap:" + Itoa(extmap.id) + " " + extmap.uri
+					} else if strings.Contains(extmap.uri, "rtp-hdrext/abs-send-time") {
+						aextmap = "a=extmap:" + Itoa(extmap.id) + " " + extmap.uri
+					} else if strings.Contains(extmap.uri, "holmer-rmcat-transport-wide-cc-extensions") {
+						aextmap = "a=extmap:" + Itoa(extmap.id) + " " + extmap.uri
+					} else if strings.Contains(extmap.uri, "ietf-avtext-framemarking") {
+						aextmap = "a=extmap:" + Itoa(extmap.id) + " " + extmap.uri
+					}
+					if len(aextmap) > 0 {
+						body = append(body, aextmap)
+					}
 				}
+
+				if rtpmap == nil {
+					body = append(body, "a=inactive")
+				} else {
+					if adir := m.ParseDrection(video.direction); len(adir) > 0 {
+						body = append(body, "a="+adir)
+					}
+				}
+				body = append(body, "a=mid:"+bundle)
 				body = append(body, "a=rtcp-mux")
 				if rtpmap != nil {
 					body = append(body, "a=rtpmap:"+rtpmap.a_rtpmap())
@@ -796,10 +901,11 @@ func (m *MediaDesc) AnswerSdp() string {
 						body = append(body, "a=rtcp-fb:"+Itoa(rtpmap.ptype)+" nack")
 					}
 					body = append(body, "a=rtcp-fb:"+Itoa(rtpmap.ptype)+" nack pli")
-					body = append(body, "a=rtcp-fb:"+Itoa(rtpmap.ptype)+" ccm fir")
+					//body = append(body, "a=rtcp-fb:"+Itoa(rtpmap.ptype)+" ccm fir")
 					body = append(body, "a=rtcp-fb:"+Itoa(rtpmap.ptype)+" goog-remb")
 					body = append(body, "a=fmtp:"+Itoa(rtpmap.ptype)+" level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f")
-					if video.use_rtx {
+					// rtx payload: rtx-rtp for chrome and raw-rtp for firefox
+					if video.use_rtx && video.use_rtx_apt {
 						body = append(body, "a=rtpmap:"+rtpmap.a_rtxmap())
 						body = append(body, "a=fmtp:"+rtpmap.a_fmtp_apt())
 					}
@@ -808,7 +914,7 @@ func (m *MediaDesc) AnswerSdp() string {
 					if video.use_red_fec {
 						body = append(body, "a=rtpmap:"+redmap.a_rtpmap())
 						body = append(body, "a=rtpmap:"+fecmap.a_rtpmap())
-						if video.use_red_rtx {
+						if video.use_red_rtx && video.use_red_rtx_apt {
 							body = append(body, "a=rtpmap:"+redmap.a_rtxmap())
 							body = append(body, "a=fmtp:"+redmap.a_fmtp_apt())
 						}
@@ -817,41 +923,36 @@ func (m *MediaDesc) AnswerSdp() string {
 
 				// ssrc template which will be processed in client
 				//   keyword: <main_ssrc>, <rtx_ssrc>
-				if video.use_fid {
-					body = append(body, "a=ssrc-group:FID main_ssrc rtx_ssrc")
-				}
-				if oldSdp {
-					body = append(body, "a=ssrc:main_ssrc cname:"+kSdpCname)
-					body = append(body, "a=ssrc:main_ssrc msid:stream_video_label track_video_label")
-					body = append(body, "a=ssrc:main_ssrc mslabel:stream_video_label")
-					body = append(body, "a=ssrc:main_ssrc label:track_video_label")
-				} else {
-					body = append(body, "a=msid:{stream_video_label} {track_video_label}")
-					body = append(body, "a=ssrc:main_ssrc cname:{"+kSdpCname+"}")
-				}
-				if video.use_fid {
-					if oldSdp {
-						body = append(body, "a=ssrc:rtx_ssrc cname:"+kSdpCname)
-						body = append(body, "a=ssrc:rtx_ssrc msid:stream_video_label track_video_label")
-						body = append(body, "a=ssrc:rtx_ssrc mslabel:stream_video_label")
-						body = append(body, "a=ssrc:rtx_ssrc label:track_video_label")
-					} else {
-						body = append(body, "a=ssrc:rtx_ssrc cname:{"+kSdpCname+"}")
+				var main_ssrc, rtx_ssrc uint32
+				if main_ssrc > 0 && rtx_ssrc > 0 {
+					if video.use_rtx_fid {
+						body = append(body, "a=ssrc-group:FID main_ssrc rtx_ssrc")
 					}
-				}
-				if oldSdp {
+					body = append(body, "a=ssrc:main_ssrc cname:"+kSdpCname)
+					if !m.av_unified_plan {
+						body = append(body, "a=ssrc:main_ssrc msid:stream_video_label track_video_label")
+						body = append(body, "a=ssrc:main_ssrc mslabel:stream_video_label")
+						body = append(body, "a=ssrc:main_ssrc label:track_video_label")
+					} else {
+						body = append(body, "a=msid:{stream_video_label} {track_video_label}")
+					}
+					if video.use_rtx_fid {
+						body = append(body, "a=ssrc:rtx_ssrc cname:"+kSdpCname)
+						if !m.av_unified_plan {
+							body = append(body, "a=ssrc:rtx_ssrc msid:stream_video_label track_video_label")
+							body = append(body, "a=ssrc:rtx_ssrc mslabel:stream_video_label")
+							body = append(body, "a=ssrc:rtx_ssrc label:track_video_label")
+						}
+					}
 					semantics += " stream_video_label"
-				} else {
-					semantics += " {stream_video_label}"
 				}
-				break
 			}
 		}
 	}
 
 	prefix = append(prefix, bundles, semantics)
 	sdp := append(prefix, body...)
-	return strings.Join(sdp, "\n")
+	return strings.Join(sdp, "\r\n")
 }
 
 // UpdateSdpCandidates to replace sdp candidates with new.
@@ -966,4 +1067,17 @@ func ParseCandidates(lines []string) []Candidate {
 	}
 
 	return cands
+}
+
+func LoadX509Certificate(certFile string) (*x509.Certificate, error) {
+	if cf, err := ioutil.ReadFile(certFile); err != nil {
+		return nil, err
+	} else {
+		cpb, _ := pem.Decode(cf)
+		if crt, err := x509.ParseCertificate(cpb.Bytes); err != nil {
+			return nil, err
+		} else {
+			return crt, nil
+		}
+	}
 }

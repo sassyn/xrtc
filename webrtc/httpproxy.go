@@ -64,7 +64,7 @@ func procHTTPBody(httpBody io.ReadCloser, encoding string) ([]byte, error) {
 }
 
 func procWebrtcRequest(route *RouteTarget, body []byte) []byte {
-	req := &proto.ProtoRequest{route.Tag, body}
+	req := &proto.ProtoRequest{route.Base.Tag, body}
 	if ret, err := proto.Inst().ParseRequest(req); err == nil {
 		if ret != nil {
 			wa := &WebrtcAction{
@@ -75,28 +75,27 @@ func procWebrtcRequest(route *RouteTarget, body []byte) []byte {
 			return ret.Data
 		}
 	} else {
-		log.Warnln("[proxy] resquest error:", route.Tag, err, string(body))
+		log.Warnln("[proxy] resquest error:", route.Base.Tag, err, string(body))
 	}
 	return nil
 }
 
 func procWebrtcResponse(route *RouteTarget, host string, body []byte) []byte {
-	resp := &proto.ProtoResponse{route.Tag, body, Inst().Candidates()}
+	resp := &proto.ProtoResponse{route.Base.Tag, body, Inst().Candidates()}
 	if ret, err := proto.Inst().ParseResponse(resp); err == nil {
 		if ret != nil {
+			routeBase := route.Base
+			routeBase.IceHost = host
 			wa := &WebrtcAction{
-				data:      ret.Sdp,
-				action:    WebrtcActionAnswer,
-				tag:       route.Tag,
-				iceHost:   host,
-				iceTcp:    route.IceTcp,
-				iceDirect: route.IceDirect,
+				data:   ret.Sdp,
+				action: WebrtcActionAnswer,
+				route:  &routeBase,
 			}
 			Inst().ChanAdmin() <- NewWebrtcActionMessage(wa)
 			return ret.Data
 		}
 	} else {
-		log.Warnln("[proxy] response error:", route.Tag, err, string(body))
+		log.Warnln("[proxy] response error:", route.Base.Tag, err, string(body))
 	}
 	return nil
 }
@@ -124,7 +123,7 @@ func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flu
 			}
 
 			// TODO: process request body
-			if len(route.Tag) == 0 {
+			if len(route.Base.Tag) == 0 {
 				//log.Warnln("[proxy] no tag for path=", req.URL.Path)
 				return
 			}
@@ -132,7 +131,7 @@ func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flu
 			encoding := req.Header.Get("Content-Encoding")
 			body, err := procHTTPBody(req.Body, encoding)
 			if body == nil || err != nil {
-				log.Println("[proxy] http invalid reqeust body, err=", err)
+				log.Warnln("[proxy] http invalid reqeust body, err=", err)
 				return
 			}
 
@@ -151,7 +150,7 @@ func newHTTPProxy(route *RouteTarget, target *url.URL, tr http.RoundTripper, flu
 				return nil
 			}
 
-			if len(route.Tag) == 0 {
+			if len(route.Base.Tag) == 0 {
 				//log.Warnln("[proxy] no tag for path=", resp.Request.URL.Path)
 				return nil
 			}
@@ -217,14 +216,9 @@ type RouteTarget struct {
 	// This is cached here to prevent multiple generations per request.
 	RedirectURL *url.URL
 
-	// The tag of WebRTC server
-	Tag string
-
-	// Ice TCP with high priority
-	IceTcp bool
-
-	// Ice direct
-	IceDirect bool
+	// Route base info
+	Base   RouteBase
+	TlsPem TlsPem
 }
 
 type HttpProxyHandler struct {
@@ -343,6 +337,7 @@ func (p *HttpProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	upgrade, accept := r.Header.Get("Upgrade"), r.Header.Get("Accept")
+	upgrade = strings.ToLower(upgrade)
 
 	tr := p.Transport
 	if t.TLSSkipVerify {
@@ -351,7 +346,9 @@ func (p *HttpProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var h http.Handler
 	switch {
-	case upgrade == "websocket" || upgrade == "Websocket":
+	case t.Base.Autonomy == true:
+		h = newWebapi(upgrade, t)
+	case upgrade == "websocket":
 		r.URL = targetURL
 		if targetURL.Scheme == "https" || targetURL.Scheme == "wss" {
 			h = newWSHandler(t, targetURL.Host, func(network, address string) (net.Conn, error) {
@@ -421,8 +418,8 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 	return NewHttpProxyHandle(*cfg, func(w http.ResponseWriter, r *http.Request) *RouteTarget {
 		//log.Println("[proxy] route, req:", r.Header, r.URL, r.Host)
 
-		var tag, routeUri string
-		var iceTcp, iceDirect bool
+		var rtbase RouteBase
+		var routeUri string
 
 		hostname := strings.Split(r.Host, ":")[0]
 
@@ -443,7 +440,7 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 			rid = "rid_" + rid
 			if item := cfg.Cache.Get(rid); item != nil {
 				if rt, ok := item.data.(*util.StringPair); ok {
-					tag = rt.First
+					//tag = rt.First
 					routeUri = rt.Second
 					log.Println("[proxy] get route by rid=", rid, routeUri, r.URL)
 				}
@@ -476,14 +473,18 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 
 				// check common path: prefix-only
 				for _, rt := range cfg.PathRoutes {
-					//log.Println("[proxy] route check path,", item, r.URL.Path)
+					//log.Println("[proxy] route check path:", r.URL.Path, rt.Paths)
 					for _, item := range rt.Paths {
 						if strings.HasPrefix(r.URL.Path, item.First) {
 							route = rt
 							break
 						}
 					}
+					if route != nil {
+						break
+					}
 				}
+
 				break
 			}
 
@@ -491,6 +492,7 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 				return nil
 			}
 
+			//log.Println("[proxy] route check:", route)
 			if route.UpStream == nil {
 				// use a seperate host not upstream
 				routeUri = route.UpStreamId
@@ -510,35 +512,28 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 				}
 			}
 
-			if len(routeUri) < 4 {
-				//log.Warnln("[proxy] no valid uri")
-				return nil
-			}
-
-			tag = route.Tag
-			iceTcp = route.IceTcp
-			iceDirect = route.IceDirect
+			rtbase = route.Base
 			if len(rid) > 0 {
 				// store route by rid
-				cfg.Cache.Set(rid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
+				//cfg.Cache.Set(rid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
 			}
 
 			// disable now
-			if tag == "janus0" {
+			if rtbase.Tag == "janus0" {
 				paths := strings.Split(r.URL.Path, "/")
 				//log.Println("[proxy] split path=", len(paths), paths, r.URL)
 				if len(paths) >= 3 && paths[1] == "janus" {
 					jid := "jid_" + paths[2]
 					if item := cfg.Cache.Get(jid); item != nil {
 						if rt, ok := item.data.(*util.StringPair); ok {
-							tag = rt.First
+							//tag = rt.First
 							routeUri = rt.Second
 							//log.Println("[proxy] get route by jid=", jid, routeUri)
 						}
 					} else {
 						// sotre route by jid
 						log.Println("[proxy] store route by jid=", jid, routeUri)
-						cfg.Cache.Set(jid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
+						//cfg.Cache.Set(jid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
 					}
 				}
 			}
@@ -555,9 +550,8 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 
 		return &RouteTarget{
 			Service:       name,
-			Tag:           tag,
-			IceTcp:        iceTcp,
-			IceDirect:     iceDirect,
+			Base:          rtbase,
+			TlsPem:        cfg.TlsPem,
 			TLSSkipVerify: true,
 			URL:           uri,
 		}

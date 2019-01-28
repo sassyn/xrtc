@@ -49,6 +49,10 @@ func (u *UdpServer) Params() *NetParams {
 	return &u.config.Net
 }
 
+func (u *UdpServer) GetTlsPem() TlsPem {
+	return u.config.Net.TlsPem
+}
+
 func (u *UdpServer) Close() {
 }
 
@@ -61,6 +65,8 @@ func (u *UdpServer) Run() {
 	go u.writing()
 
 	sendChan := u.hub.ChanRecvFromOuter()
+	netMisc := &NetMisc{u.GetTlsPem(), u.chanRecv}
+
 	rbuf := make([]byte, kMaxPacketSize)
 	for {
 		if nret, raddr, err := u.conn.ReadFromUDP(rbuf[0:]); err == nil {
@@ -68,7 +74,7 @@ func (u *UdpServer) Run() {
 			u.recvCount += nret
 			data := make([]byte, nret)
 			copy(data, rbuf[0:nret])
-			sendChan <- NewHubMessage(data, raddr, nil, u.chanRecv)
+			sendChan <- NewHubMessage(data, raddr, nil, netMisc)
 		} else {
 			log.Warnln("[udp] read udp error: ", err, ", remote: ", raddr)
 			break

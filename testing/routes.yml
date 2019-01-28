@@ -40,11 +40,18 @@ services:
                     paths:
                         - /janus
                 ums:
+                    disable: true
                     upstream: http://upstream_ums1
                     icetcp: false
                     icedirect: true
                     hosts:
                         - ums.zenvv.com
+                    paths:
+                        - /board
+                        - /status
+                        - /object/version
+                webapi:
+                    autonomy: true
                     paths:
                         - /board
                         - /status

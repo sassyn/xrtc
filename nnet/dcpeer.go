@@ -1,3 +1,4 @@
+// Based-on https://github.com/xhs/gortcdc
 package nnet
 
 import (
@@ -28,8 +29,8 @@ type DcPeer struct {
 	state      int
 }
 
-func NewDcPeer() (*DcPeer, error) {
-	ctx, err := NewContext("gortcdc", 365)
+func NewDcPeer(pem, key, passwd string) (*DcPeer, error) {
+	ctx, err := NewContextEx(pem, key, passwd)
 	if err != nil {
 		return nil, err
 	}
@@ -61,14 +62,7 @@ func (p *DcPeer) Destroy() {
 	p.sctp.Destroy()
 }
 
-type Signaller interface {
-	Send(data []byte) error
-	ReceiveFrom() <-chan []byte
-}
-
-func (p *DcPeer) Run(s Signaller) error {
-	recvChan := s.ReceiveFrom()
-
+func (p *DcPeer) Run(recvChan chan []byte) error {
 	if p.role == dcRoleClient {
 		log.Println("DTLS connecting")
 		p.dtls.SetConnectState()
@@ -82,7 +76,7 @@ func (p *DcPeer) Run(s Signaller) error {
 		var buf [1 << 16]byte
 		for {
 			data := <-recvChan
-			log.Println(len(data), " bytes of DTLS data received")
+			//log.Println(len(data), " bytes of DTLS data received")
 			p.dtls.Feed(data)
 
 			n, _ := p.dtls.Read(buf[:])
@@ -120,6 +114,7 @@ func (p *DcPeer) Run(s Signaller) error {
 	}()
 
 	if err := p.dtls.Handshake(); err != nil {
+		log.Errorln("DTLS handshake error:", err)
 		return err
 	}
 	exitTick <- true
@@ -175,8 +170,13 @@ func randSession() string {
 
 func (p *DcPeer) ParseOfferSdp(offer string) (int, error) {
 	sdps := strings.Split(offer, "\r\n")
+	if len(sdps) <= 2 {
+		sdps = strings.Split(offer, "\n")
+	}
 	for i := range sdps {
-		if strings.HasPrefix(sdps[i], "a=sctp-port:") {
+		// a=sctp-port:5000
+		// a=sctpmap:5000 webrtc-datachannel 1024
+		if strings.HasPrefix(sdps[i], "a=sctp-port:") || strings.HasPrefix(sdps[i], "a=sctpmap:") {
 			sctpmap := strings.Split(sdps[i], " ")[0]
 			port, err := strconv.Atoi(strings.Split(sctpmap, ":")[1])
 			if err != nil {
@@ -197,16 +197,4 @@ func (p *DcPeer) ParseOfferSdp(offer string) (int, error) {
 	p.state = dcStateConnecting
 
 	return 0, nil
-}
-
-func (p *DcPeer) ParseCandidateSdp(cands string) int {
-	sdps := strings.Split(cands, "\r\n")
-	count := 0
-	for i := range sdps {
-		if sdps[i] == "" {
-			continue
-		}
-		count++
-	}
-	return count
 }

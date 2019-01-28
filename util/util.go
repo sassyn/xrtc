@@ -248,8 +248,8 @@ type StringPair struct {
 	Second string
 }
 
-func (sp StringPair) ToStringBySpace() string {
-	return sp.First + " " + sp.Second
+func (s StringPair) ToString(sp string) string {
+	return s.First + sp + s.Second
 }
 
 // NetAddrString return a complete network string: "udp|tcp://host:port".
@@ -385,4 +385,20 @@ func LookupIP(host string) string {
 		}
 	}
 	return hostIp
+}
+
+const kChromeAgent string = "chrome"
+const kFirefoxAgent string = "firefox"
+const kUnknownAgent string = "unknown"
+
+// ParseAgent parse browser long agent to short name
+func ParseAgent(userAgent string) string {
+	userAgent = strings.ToLower(userAgent)
+	if strings.Contains(userAgent, "firefox/") {
+		return kFirefoxAgent
+	}
+	if strings.Contains(userAgent, "chrome/") {
+		return kChromeAgent
+	}
+	return kUnknownAgent
 }

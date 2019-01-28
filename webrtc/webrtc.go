@@ -16,12 +16,9 @@ const (
 )
 
 type WebrtcAction struct {
-	data      []byte
-	action    int
-	tag       string
-	iceHost   string
-	iceTcp    bool
-	iceDirect bool
+	data   []byte
+	action int
+	route  *RouteBase
 }
 
 func NewWebrtcActionMessage(wa *WebrtcAction) interface{} {

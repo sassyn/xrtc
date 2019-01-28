@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/PeterXu/xrtc/log"
+	"github.com/PeterXu/xrtc/nnet"
 	"github.com/PeterXu/xrtc/util"
 )
 
 type Service struct {
-	agent *nice.Agent
+	agent *nnet.Agent
 	user  *User
 
 	// when iceDirect == true
@@ -63,7 +64,7 @@ func (s *Service) Init(ufrag, pwd, remote string) bool {
 	}
 
 	//iceDebugEnable(true)
-	s.agent, _ = nice.NewAgent()
+	s.agent, _ = nnet.NewAgent()
 	s.agent.SetMinMaxPort(40000, 50000)
 	s.agent.SetLocalCredentials(ufrag, pwd)
 	if err := s.agent.GatherCandidates(); err != nil {
@@ -112,7 +113,7 @@ func (s *Service) sendData(data []byte) {
 	}
 }
 
-func (s *Service) eventChannel() chan *nice.GoEvent {
+func (s *Service) eventChannel() chan *nnet.GoEvent {
 	if s.agent != nil {
 		return s.agent.EventChannel
 	} else {
@@ -310,20 +311,20 @@ func (s *Service) Run() {
 			// send to server
 			_ = cand
 		case e := <-s.eventChannel():
-			if e.Event == nice.EventNegotiationDone {
+			if e.Event == nnet.EventNegotiationDone {
 				log.Println("[service] agent negotiation done")
 				// dtls handshake/sctp
 				//s.agent.Send([]byte("hello"))
-			} else if e.Event == nice.EventStateChanged {
+			} else if e.Event == nnet.EventStateChanged {
 				switch e.State {
-				case nice.EventStateNiceDisconnected:
+				case nnet.EventStateNiceDisconnected:
 					s.ready = false
 					log.Println("[service] agent ice disconnected")
 					quit = true
-				case nice.EventStateNiceConnected:
+				case nnet.EventStateNiceConnected:
 					s.ready = true
 					log.Println("[service] agent ice connected")
-				case nice.EventStateNiceReady:
+				case nnet.EventStateNiceReady:
 					s.ready = true
 					log.Println("[service] agent ice ready")
 				default:

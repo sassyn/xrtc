@@ -2,7 +2,7 @@
 //
 // Based-on https://github.com/xhs/goblice
 
-package nice
+package nnet
 
 /*
 #cgo pkg-config: nice

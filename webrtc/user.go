@@ -6,9 +6,11 @@ import (
 )
 
 type User struct {
-	tag         string
-	iceTcp      bool                   // connect with webrtc server by tcp/udp
-	iceDirect   bool                   // xrtc forward ice stun between outer and inner
+	// valid for chating not proxy clients
+	uid   string
+	mtype string // audio/video/im
+
+	route       *RouteBase             // user route info
 	connections map[string]*Connection // outer client connections
 	chanSend    chan interface{}       // data to inner
 	service     *Service               // inner webrtc server
@@ -26,12 +28,9 @@ type User struct {
 	ctime uint32 // create time
 }
 
-func NewUser(tag string, iceTcp, iceDirect bool) *User {
+func NewUser(route *RouteBase) *User {
 	return &User{
-		rtcProxy:    true,
-		tag:         tag,
-		iceTcp:      iceTcp,
-		iceDirect:   iceDirect,
+		route:       route,
 		connections: make(map[string]*Connection),
 		chanSend:    make(chan interface{}, 100),
 		utime:       util.NowMs(),
@@ -43,7 +42,7 @@ func (u *User) getKey() string {
 	return u.recvUfrag + ":" + u.sendUfrag
 }
 
-func (u *User) setOfferAnswer(host, offer, answer string) bool {
+func (u *User) setOfferAnswer(offer, answer string) bool {
 	var desc1 util.MediaDesc
 	if desc1.Parse([]byte(offer)) {
 		// parsed from offer
@@ -68,7 +67,7 @@ func (u *User) setOfferAnswer(host, offer, answer string) bool {
 		return false
 	}
 
-	return u.startService(host, desc2.GetCandidates())
+	return u.startService(u.route.IceHost, desc2.GetCandidates())
 }
 
 func (u *User) getSendIce() (string, string) {
@@ -90,15 +89,15 @@ func (u *User) getAnswer() string {
 }
 
 func (u *User) isIceTcp() bool {
-	return u.iceTcp
+	return u.route.IceTcp
 }
 
 func (u *User) isIceDirect() bool {
-	return u.iceDirect
+	return u.route.IceDirect
 }
 
 func (u *User) isProxy() bool {
-	return u.rtcProxy
+	return !u.route.Autonomy
 }
 
 func (u *User) addConnection(conn *Connection) {
@@ -172,6 +171,10 @@ func (u *User) onServiceClose() {
 }
 
 func (u *User) startService(host string, candidates []string) bool {
+	if !u.isProxy() {
+		return true
+	}
+
 	if u.service != nil {
 		return true
 	}

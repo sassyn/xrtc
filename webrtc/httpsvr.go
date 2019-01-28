@@ -33,8 +33,8 @@ func NewHttpServer(hub *MaxHub, cfg *HTTPConfig) *HttpServer {
 	return &HttpServer{hub: hub, ln: l, config: cfg}
 }
 
-func (s *HttpServer) GetSslFile() (string, string) {
-	return s.config.Net.TlsCrtFile, s.config.Net.TlsKeyFile
+func (s *HttpServer) GetTlsPem() TlsPem {
+	return s.config.Net.TlsPem
 }
 
 func (s *HttpServer) Params() *NetParams {
@@ -44,6 +44,7 @@ func (s *HttpServer) Params() *NetParams {
 func (s *HttpServer) Run() {
 	s.config.Http.Cache = NewCache()
 	defer s.config.Http.Cache.Close()
+	s.config.Http.TlsPem = s.GetTlsPem()
 
 	defer s.ln.Close()
 
@@ -125,9 +126,10 @@ func (h *HttpHandler) Process() bool {
 		isSsl = true
 	}
 
+	pem := h.svr.GetTlsPem()
 	if isSsl {
 		//log.Println("[http] setup tls key/cert for", h.conn.RemoteAddr())
-		cer, err := tls.LoadX509KeyPair(h.svr.GetSslFile())
+		cer, err := tls.LoadX509KeyPair(pem.CrtFile, pem.KeyFile)
 		if err != nil {
 			log.Warnf("[http] load tls key/cert err: %v", err)
 			return false

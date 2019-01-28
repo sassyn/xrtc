@@ -83,8 +83,8 @@ func NewTcpServer(hub *MaxHub, cfg *TCPConfig) *TcpServer {
 	return &TcpServer{hub: hub, ln: l, config: cfg}
 }
 
-func (s *TcpServer) GetSslFile() (string, string) {
-	return s.config.Net.TlsCrtFile, s.config.Net.TlsKeyFile
+func (s *TcpServer) GetTlsPem() TlsPem {
+	return s.config.Net.TlsPem
 }
 
 func (s *TcpServer) Params() *NetParams {
@@ -94,6 +94,7 @@ func (s *TcpServer) Params() *NetParams {
 func (s *TcpServer) Run() {
 	s.config.Http.Cache = NewCache()
 	defer s.config.Http.Cache.Close()
+	s.config.Http.TlsPem = s.GetTlsPem()
 
 	defer s.ln.Close()
 
@@ -179,6 +180,7 @@ func (h *TcpHandler) Process() bool {
 		}
 	}
 
+	pem := h.svr.GetTlsPem()
 	if len(data) >= kSslClientHelloLen && bytes.Compare(data[0:kSslClientHelloLen], kSslClientHello) == 0 {
 		log.Println("[tcp] setup ssltcp handshake for", h.conn.RemoteAddr())
 		h.conn.Write(kSslServerHello)
@@ -195,7 +197,7 @@ func (h *TcpHandler) Process() bool {
 		}
 	} else {
 		log.Println("[tcp] setup tls key/cert for", h.conn.RemoteAddr())
-		cer, err := tls.LoadX509KeyPair(h.svr.GetSslFile())
+		cer, err := tls.LoadX509KeyPair(pem.CrtFile, pem.KeyFile)
 		if err != nil {
 			log.Warnf("[tcp] load tls key/cert err: %v", err)
 			return false
@@ -242,6 +244,7 @@ func (h *TcpHandler) ServeTCP() {
 
 	// reading
 	sendChan := h.svr.hub.ChanRecvFromOuter()
+	netMisc := &NetMisc{h.svr.GetTlsPem(), h.chanRecv}
 
 	rbuf := make([]byte, kMaxPacketSize)
 	for {
@@ -249,7 +252,7 @@ func (h *TcpHandler) ServeTCP() {
 			if nret > 0 {
 				data := make([]byte, nret)
 				copy(data, rbuf[0:nret])
-				sendChan <- NewHubMessage(data, h.conn.RemoteAddr(), nil, h.chanRecv)
+				sendChan <- NewHubMessage(data, h.conn.RemoteAddr(), nil, netMisc)
 			} else {
 				log.Warnln("[ice-tcp-svr] read data nothing")
 			}

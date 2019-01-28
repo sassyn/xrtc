@@ -168,10 +168,14 @@ func (u *UPSConfig) Load(node yaml.List) {
 }
 
 // Net basic params
+type TlsPem struct {
+	CrtFile string
+	KeyFile string
+}
+
 type NetParams struct {
 	Addr       string // "host:port"
-	TlsCrtFile string
-	TlsKeyFile string
+	TlsPem     TlsPem
 	EnableIce  bool     // enable for ice
 	Candidates []string // ice candidates, valid when EnableIce is true
 }
@@ -179,8 +183,8 @@ type NetParams struct {
 // Load loads the "net:" parameters under one service.
 func (n *NetParams) Load(node yaml.Map, proto string) {
 	n.Addr = yaml.ToString(node.Key("addr"))
-	n.TlsCrtFile = yaml.ToString(node.Key("tls_crt_file"))
-	n.TlsKeyFile = yaml.ToString(node.Key("tls_key_file"))
+	n.TlsPem.CrtFile = yaml.ToString(node.Key("tls_crt_file"))
+	n.TlsPem.KeyFile = yaml.ToString(node.Key("tls_key_file"))
 
 	n.EnableIce = (yaml.ToString(node.Key("enable_ice")) == "true")
 	for n.EnableIce {
@@ -276,19 +280,26 @@ var kDefaultHttpParams = HttpParams{
 	STSHeader:             STSHeader{},
 }
 
+type RouteBase struct {
+	Tag       string // backend tag
+	IceTcp    bool   // tcp with high priority if true (default false, udp first)
+	IceDirect bool   // whether to enable iceDirect (default false)
+	IceHost   string // inner server address,
+	Autonomy  bool   // whether autonomy or proxy server(default false, proxy)
+}
+
 type RouteTable struct {
-	Tag        string // backend tag
+	Disable    bool   // disable this route (default false)
 	UpStreamId string // backend upstream
-	IceTcp     bool   // tcp with high priority if true
-	IceDirect  bool   // wether to enable iceDirect
+	Base       RouteBase
 	Paths      []util.StringPair
 	UpStream   *UPSConfig
 }
 
 func NewRouteTable(tag string) *RouteTable {
-	return &RouteTable{
-		Tag: tag,
-	}
+	t := &RouteTable{}
+	t.Base.Tag = tag
+	return t
 }
 
 const kDefaultServerName = "_"
@@ -302,8 +313,10 @@ type HttpParams struct {
 	ProtoRoutes map[string]*RouteTable // proto routes
 	PathRoutes  []*RouteTable          // path routes
 
+	// internal using
 	SessionRids map[string]util.StringPair // upstream by session rid
 	Cache       *Cache                     // session cache
+	TlsPem      TlsPem                     // reserved not from config
 
 	MaxConns              int           // max idle conns
 	IdleConnTimeout       time.Duration // the maximum amount of time an idle conn (keep-alive) connection
@@ -366,9 +379,18 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 		// Create route table
 		table := NewRouteTable(tag)
 
+		if v, ok := item["disable"]; ok {
+			table.Disable = (yaml.ToString(v) == "true")
+		}
+		if table.Disable {
+			log.Warnln("[config] disabled route for tag:", tag)
+			continue
+		}
+
 		// Process host/proto/path routes
 		for prop, v := range item {
 			switch prop {
+			case "disable":
 			case "upstream":
 				if _, err := yaml.ToScalar(v); err == nil {
 					table.UpStreamId = yaml.ToString(v)
@@ -376,17 +398,11 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 					log.Warn("[config] http routes, invalid upstream=", v)
 				}
 			case "icetcp":
-				if _, err := yaml.ToScalar(v); err == nil {
-					table.IceTcp = (yaml.ToString(v) == "true")
-				} else {
-					log.Warn("[config] http routes, invalid iceTcp=", v)
-				}
+				table.Base.IceTcp = (yaml.ToString(v) == "true")
 			case "icedirect":
-				if _, err := yaml.ToScalar(v); err == nil {
-					table.IceDirect = (yaml.ToString(v) == "true")
-				} else {
-					log.Warn("[config] http routes, invalid iceDirect=", v)
-				}
+				table.Base.IceDirect = (yaml.ToString(v) == "true")
+			case "autonomy":
+				table.Base.Autonomy = (yaml.ToString(v) == "true")
 			case "hosts":
 				if hosts, err := yaml.ToList(v); err == nil {
 					for _, host := range hosts {
@@ -432,6 +448,9 @@ func (h *HttpParams) loadHttpRoutes(node yaml.Map) {
 
 func (h *HttpParams) InitUpstream(upstreams map[string]*UPSConfig) {
 	for _, table := range h.Routes {
+		if len(table.UpStreamId) == 0 {
+			continue
+		}
 		if uri, err := url.Parse(table.UpStreamId); err != nil {
 			log.Error("[config] invalid upstreamId=", table.UpStreamId, err)
 			break

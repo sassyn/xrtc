@@ -15,6 +15,11 @@ type OneServer interface {
 	Params() *NetParams
 }
 
+type NetMisc struct {
+	TlsPem   TlsPem
+	chanSend chan interface{}
+}
+
 type HubMessage struct {
 	data []byte
 	from net.Addr
@@ -28,7 +33,7 @@ func NewHubMessage(data []byte, from net.Addr, to net.Addr, misc interface{}) *H
 
 type MaxHub struct {
 	connections map[string]*Connection
-	clients     map[string]*User
+	users       map[string]*User
 	servers     []OneServer
 
 	// cache control
@@ -47,7 +52,7 @@ type MaxHub struct {
 func NewMaxHub() *MaxHub {
 	hub := &MaxHub{cache: NewCache(), exitTick: make(chan bool)}
 	hub.connections = make(map[string]*Connection)
-	hub.clients = make(map[string]*User)
+	hub.users = make(map[string]*User)
 
 	hub.chanRecvFromOuter = make(chan interface{}, 1000) // unblocking mode, data from udpsvr
 	hub.chanAdmin = make(chan interface{}, 10)           // data from faibo(admin/control)
@@ -119,9 +124,8 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 		log.Println("[maxhub] stun name:", items)
 
 		var offer, answer string
-		var tag, host string
-		var iceTcp, iceDirect bool
-		user, ok := h.clients[stunName]
+		var route *RouteBase
+		user, ok := h.users[stunName]
 		if !ok {
 			offerUfrag := items[1] + "_offer"
 			if item := h.cache.Get(offerUfrag); item != nil {
@@ -134,30 +138,31 @@ func (h *MaxHub) handleStunBindingRequest(data []byte, addr net.Addr, misc inter
 			if item := h.cache.Get(answerUfrag); item != nil {
 				if wa, ok := item.data.(*WebrtcAction); ok {
 					answer = string(wa.data)
-					tag = wa.tag
-					host = wa.iceHost
-					iceTcp = wa.iceTcp
-					iceDirect = wa.iceDirect
+					route = wa.route
 				}
 			}
-			if len(offer) <= 10 || len(answer) <= 10 || len(tag) < 2 || len(host) < 2 {
-				log.Warnln("[maxhub] invalid offer, answer", tag, host, len(offer), len(answer))
+			if len(offer) <= 10 || len(answer) <= 10 {
+				log.Warnln("[maxhub] invalid offer or answer:", len(offer), len(answer))
+				return
+			}
+			if route == nil {
+				log.Warnln("[maxhub] invalid route:", route)
 				return
 			}
 
-			user = NewUser(tag, iceTcp, iceDirect)
-			if !user.setOfferAnswer(host, offer, answer) {
+			user = NewUser(route)
+			if !user.setOfferAnswer(offer, answer) {
 				log.Warnln("[maxhub] invalid offer/answer for user")
 				return
 			}
-			h.clients[stunName] = user
+			h.users[stunName] = user
 		} else {
 			log.Warnln("[maxhub] another connection for user-stun=", stunName)
 		}
 
-		if chanSend, ok := misc.(chan interface{}); ok {
+		if netMisc, ok := misc.(*NetMisc); ok {
 			// new conn
-			conn := NewConnection(addr, chanSend)
+			conn := NewConnection(addr, netMisc)
 			conn.setUser(user)
 			// add conn into user
 			user.addConnection(conn)
@@ -190,7 +195,7 @@ func (h *MaxHub) clearConnections() {
 
 func (h *MaxHub) clearUsers() {
 	var userKeys []string
-	for k, v := range h.clients {
+	for k, v := range h.users {
 		if v.isTimeout() {
 			v.dispose()
 			userKeys = append(userKeys, k)
@@ -200,7 +205,7 @@ func (h *MaxHub) clearUsers() {
 	if len(userKeys) > 0 {
 		log.Println("[maxhub] clear users, size=", len(userKeys))
 		for index := range userKeys {
-			delete(h.clients, userKeys[index])
+			delete(h.users, userKeys[index])
 		}
 	}
 }
@@ -221,7 +226,7 @@ func (h *MaxHub) OnRecvFromOuter(msg *HubMessage) {
 	}
 }
 
-// request from outer (browser clients)
+// request from outer (browser users)
 func (h *MaxHub) ChanRecvFromOuter() chan interface{} {
 	return h.chanRecvFromOuter
 }
