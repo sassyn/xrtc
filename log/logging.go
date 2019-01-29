@@ -14,7 +14,7 @@
 // The Panic functions call panic after writing the log message.
 //
 // Based-on https://golang.org/pkg/log.
-package logging
+package log
 
 import (
 	"fmt"

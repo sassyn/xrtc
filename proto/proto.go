@@ -3,7 +3,7 @@
 package proto
 
 import (
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 )
 
 // REST request packet from webrtc client

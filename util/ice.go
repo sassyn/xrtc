@@ -11,7 +11,7 @@ import (
 	"net"
 	"unsafe"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 )
 
 // StunMessageType 2-bytes

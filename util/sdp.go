@@ -3,7 +3,7 @@ package util
 import (
 	"strings"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 )
 
 const kSdpOwner string = "xwebrtc"

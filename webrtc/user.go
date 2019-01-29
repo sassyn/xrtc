@@ -1,7 +1,7 @@
 package webrtc
 
 import (
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 	"github.com/PeterXu/xrtc/util"
 )
 
@@ -28,6 +28,7 @@ type User struct {
 
 func NewUser(tag string, iceTcp, iceDirect bool) *User {
 	return &User{
+		rtcProxy:    true,
 		tag:         tag,
 		iceTcp:      iceTcp,
 		iceDirect:   iceDirect,
@@ -94,6 +95,10 @@ func (u *User) isIceTcp() bool {
 
 func (u *User) isIceDirect() bool {
 	return u.iceDirect
+}
+
+func (u *User) isProxy() bool {
+	return u.rtcProxy
 }
 
 func (u *User) addConnection(conn *Connection) {

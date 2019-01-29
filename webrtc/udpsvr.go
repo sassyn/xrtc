@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 	"github.com/PeterXu/xrtc/util"
 )
 

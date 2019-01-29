@@ -5,7 +5,8 @@ import (
 	"net"
 	"time"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
+	"github.com/PeterXu/xrtc/nnet"
 	"github.com/PeterXu/xrtc/util"
 )
 
@@ -15,6 +16,9 @@ type Connection struct {
 	addr     net.Addr
 	chanSend chan interface{}
 	user     *User
+
+	// dtls/datachannel
+	dcep *nnet.DcPeer
 
 	ready                  bool
 	stunRequesting         uint32
@@ -60,7 +64,7 @@ func (c *Connection) isTimeout() bool {
 func (c *Connection) onRecvData(data []byte) {
 	c.utime = util.NowMs()
 
-	if !c.user.isIceDirect() && util.IsStunPacket(data) {
+	if (!c.user.isProxy() || !c.user.isIceDirect()) && util.IsStunPacket(data) {
 		var msg util.IceMessage
 		if !msg.Read(data) {
 			log.Warnln("[conn] invalid stun message, dtype=", msg.Dtype)
@@ -86,10 +90,13 @@ func (c *Connection) onRecvData(data []byte) {
 		}
 	} else {
 		// dtls handshake
-		// rtp/rtcp data to inner
 		//log.Println("[conn] recv dtls/rtp/rtcp, len=", len(data))
-		c.ready = true
-		c.user.sendToInner(c, data)
+		if c.user.isProxy() {
+			// rtp/rtcp data to inner
+			c.ready = true
+			c.user.sendToInner(c, data)
+		} else {
+		}
 	}
 }
 

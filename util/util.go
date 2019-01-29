@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 )
 
 // NowMs return crrent UTC time(milliseconds) with 32bit

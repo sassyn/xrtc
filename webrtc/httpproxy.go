@@ -19,7 +19,7 @@ import (
 	"time"
 
 	gziph "github.com/PeterXu/xrtc/gzip"
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 	"github.com/PeterXu/xrtc/proto"
 	"github.com/PeterXu/xrtc/util"
 	uuid "github.com/PeterXu/xrtc/uuid"

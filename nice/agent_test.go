@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/PeterXu/xrtc/logging"
+	"github.com/PeterXu/xrtc/log"
 )
 
 func TestNewAgent(t *testing.T) {
