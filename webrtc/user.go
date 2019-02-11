@@ -145,7 +145,7 @@ func (u *User) sendToOuter(data []byte) {
 		return
 	}
 
-	u.activeConn.sendData(data)
+	u.activeConn.SendData(data)
 }
 
 func (u *User) isTimeout() bool {

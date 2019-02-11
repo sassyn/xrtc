@@ -13,11 +13,11 @@ import (
 const kDefaultConnectionTimeout = 30 * 1000 // ms
 
 type Connection struct {
-	addr     net.Addr
-	misc     *NetMisc
-	user     *User
-	dcpeer   *nnet.DcPeer // dtls/datachannel
-	dtlsChan chan []byte
+	addr         net.Addr
+	misc         *NetMisc
+	user         *User
+	dcpeer       *nnet.DcPeer // dtls/datachannel
+	dtlsRecvChan chan []byte
 
 	ready                  bool
 	stunRequesting         uint32
@@ -31,7 +31,7 @@ type Connection struct {
 
 func NewConnection(addr net.Addr, misc *NetMisc) *Connection {
 	c := &Connection{addr: addr, misc: misc, utime: util.NowMs(), ctime: util.NowMs()}
-	c.dtlsChan = make(chan []byte)
+	c.dtlsRecvChan = make(chan []byte)
 	c.ready = false
 	c.hadStunChecking = false
 	c.hadStunBindingResponse = false
@@ -105,14 +105,19 @@ func (c *Connection) onRecvData(data []byte) {
 					return
 				}
 				c.dcpeer.ParseOfferSdp(c.user.getOffer())
-				go c.dcpeer.Run(c.dtlsChan)
+				go c.dcpeer.Run(c)
 			}
-			c.dtlsChan <- data
+			c.dtlsRecvChan <- data
 		}
 	}
 }
 
-func (c *Connection) sendData(data []byte) bool {
+// for dtls handshake
+func (c *Connection) RecvDataChan() chan []byte {
+	return c.dtlsRecvChan
+}
+
+func (c *Connection) SendData(data []byte) bool {
 	c.misc.chanSend <- NewHubMessage(data, nil, c.addr, nil)
 	return true
 }
@@ -137,7 +142,7 @@ func (c *Connection) onRecvStunBindingRequest(transId string) {
 	}
 
 	//log.Println("[conn] stun response len=", len(buf.Bytes()))
-	c.sendData(buf.Bytes())
+	c.SendData(buf.Bytes())
 	c.checkStunBindingRequest()
 }
 
@@ -153,7 +158,7 @@ func (c *Connection) sendStunBindingRequest() bool {
 	var buf bytes.Buffer
 	if util.GenStunMessageRequest(&buf, sendUfrag, recvUfrag, recvPwd) {
 		log.Println("[conn] send stun binding request, len=", buf.Len())
-		c.sendData(buf.Bytes())
+		c.SendData(buf.Bytes())
 	} else {
 		log.Warnln("[conn] fail to get stun request bufffer")
 	}

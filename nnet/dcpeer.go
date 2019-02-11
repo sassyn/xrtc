@@ -19,6 +19,11 @@ const (
 	dcStateConnected  = 2
 )
 
+type DtlsConnSink interface {
+	RecvDataChan() chan []byte
+	SendData(data []byte) bool
+}
+
 // datachannel peer
 type DcPeer struct {
 	ctx        *DtlsContext
@@ -62,27 +67,28 @@ func (p *DcPeer) Destroy() {
 	p.sctp.Destroy()
 }
 
-func (p *DcPeer) Run(recvChan chan []byte) error {
+func (p *DcPeer) Run(sink DtlsConnSink) error {
 	if p.role == dcRoleClient {
-		log.Println("DTLS connecting")
+		log.Println("[nnet] DTLS client connecting")
 		p.dtls.SetConnectState()
 	} else {
-		log.Println("DTLS accepting")
+		log.Println("[nnet] DTLS server accepting")
 		p.dtls.SetAcceptState()
 	}
 
-	// feed data to dtls
+	recvChan := sink.RecvDataChan()
+
+	// feed data to dtls/sctp
 	go func() {
 		var buf [1 << 16]byte
 		for {
 			data := <-recvChan
-			//log.Println(len(data), " bytes of DTLS data received")
+			//log.Println("[nnet] DTLS data feed:", len(data))
 			p.dtls.Feed(data)
 
-			n, _ := p.dtls.Read(buf[:])
-			if n > 0 {
-				log.Println(n, " bytes of SCTP data received")
-				p.sctp.Feed(buf[:n])
+			if n, _ := p.dtls.Read(buf[:]); n > 0 {
+				//log.Println("[nnet] SCTP data feed:", n)
+				p.sctp.Feed(buf[0:n])
 			}
 		}
 	}()
@@ -95,17 +101,17 @@ func (p *DcPeer) Run(recvChan chan []byte) error {
 		for {
 			select {
 			case <-tick:
-				n, _ := p.dtls.Spew(buf[:])
-				if n > 0 {
-					log.Println(n, " bytes of DTLS data ready")
+				if n, _ := p.dtls.Spew(buf[:]); n > 0 {
+					log.Println("[nnet] reply DTLS data:", n)
+					sink.SendData(buf[0:n])
 				}
 				continue
 			case <-exitTick:
 				close(exitTick)
 				// flush data
-				n, _ := p.dtls.Spew(buf[:])
-				if n > 0 {
-					log.Println(n, " bytes of DTLS data ready")
+				if n, _ := p.dtls.Spew(buf[:]); n > 0 {
+					log.Println("[nnet] flush DTLS data:", n)
+					sink.SendData(buf[0:n])
 				}
 				break
 			}
@@ -114,43 +120,45 @@ func (p *DcPeer) Run(recvChan chan []byte) error {
 	}()
 
 	if err := p.dtls.Handshake(); err != nil {
-		log.Errorln("DTLS handshake error:", err)
+		log.Errorln("[nnet] DTLS handshake error:", err)
 		return err
 	}
 	exitTick <- true
-	log.Println("DTLS handshake done")
+	log.Println("[nnet] DTLS handshake done")
 
 	// check sctp data
 	go func() {
 		var buf [1 << 16]byte
 		for {
 			data := <-p.sctp.BufferChannel
-			log.Println(len(data), " bytes of SCTP data ready")
+			log.Println("[nnet] read SCTP data:", len(data))
 			p.dtls.Write(data)
 
-			n, _ := p.dtls.Spew(buf[:])
-			if n > 0 {
-				log.Println(n, " bytes of DTLS data ready")
+			if n, _ := p.dtls.Spew(buf[:]); n > 0 {
+				log.Println("[nnet] reply DTLS data to SCTP:", n)
+				sink.SendData(buf[0:n])
 			}
 		}
 	}()
 
 	if p.role == dcRoleClient {
 		if err := p.sctp.Connect(p.remotePort); err != nil {
+			log.Errorln("[nnet] SCTP Connect error:", err)
 			return err
 		}
 	} else {
 		if err := p.sctp.Accept(); err != nil {
+			log.Errorln("[nnet] SCTP Accept error:", err)
 			return err
 		}
 	}
 	p.state = dcStateConnected
-	log.Println("SCTP handshake done")
+	log.Println("[nnet] SCTP handshake done")
 
 	for {
 		select {
 		case d := <-p.sctp.DataChannel:
-			log.Printf("sid: %d, ppid: %d, data: %v", d.Sid, d.Ppid, d.Data)
+			log.Printf("[nnet] sid: %d, ppid: %d, data: %v", d.Sid, d.Ppid, d.Data)
 		}
 	}
 

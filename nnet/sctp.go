@@ -17,6 +17,7 @@ typedef struct {
 } sctp_transport;
 
 extern void go_sctp_data_ready_cb(sctp_transport *sctp, void *data, size_t len);
+
 static int sctp_data_ready_cb(void *addr, void *data, size_t len, uint8_t tos, uint8_t set_df) {
   go_sctp_data_ready_cb((sctp_transport *)addr, data, len);
   return 0;
@@ -24,13 +25,14 @@ static int sctp_data_ready_cb(void *addr, void *data, size_t len, uint8_t tos, u
 
 extern void go_sctp_data_received_cb(sctp_transport *sctp, void *data, size_t len, int sid, int ppid);
 extern void go_sctp_notification_received_cb(sctp_transport *sctp, void *data, size_t len);
+
 static int sctp_data_received_cb(struct socket *sock, union sctp_sockstore addr, void *data,
                                  size_t len, struct sctp_rcvinfo recv_info, int flags, void *udata) {
+  sctp_transport *sctp = (sctp_transport *)udata;
   if (flags & MSG_NOTIFICATION)
-    go_sctp_notification_received_cb((sctp_transport *)udata, data, len);
+    go_sctp_notification_received_cb(sctp, data, len);
   else
-    go_sctp_data_received_cb((sctp_transport *)udata, data, len, recv_info.rcv_sid, ntohl(recv_info.rcv_ppid));
-
+    go_sctp_data_received_cb(sctp, data, len, recv_info.rcv_sid, ntohl(recv_info.rcv_ppid));
   free(data);
   return 0;
 }
@@ -107,7 +109,7 @@ static void release_usrsctp() {
   }
 }
 
-static ssize_t send_data(sctp_transport *sctp,
+static ssize_t send_sctp(sctp_transport *sctp,
                          void *data, size_t len, uint16_t sid, uint32_t ppid)
 {
   struct sctp_sndinfo info;
@@ -172,15 +174,15 @@ type SctpData struct {
 type SctpTransport struct {
 	sctp          *C.sctp_transport
 	Port          int
-	mtx           sync.Mutex
 	BufferChannel chan []byte
 	DataChannel   chan *SctpData
+	mtx           sync.Mutex
 }
 
 func NewTransport(port int) (*SctpTransport, error) {
 	sctp := C.new_sctp_transport(C.int(port), nil)
 	if sctp == nil {
-		return nil, errors.New("failed to create SCTP transport")
+		return nil, errors.New("fail to create SCTP transport")
 	}
 	s := &SctpTransport{sctp: sctp, Port: port}
 	s.BufferChannel = make(chan []byte, 16)
@@ -200,7 +202,7 @@ func (s *SctpTransport) Destroy() {
 func go_sctp_data_ready_cb(sctp *C.sctp_transport, data unsafe.Pointer, length C.size_t) {
 	s := (*SctpTransport)(sctp.udata)
 	b := C.GoBytes(data, C.int(length))
-	s.BufferChannel <- b
+	s.BufferChannel <- b // TODO
 }
 
 //export go_sctp_data_received_cb
@@ -225,9 +227,9 @@ func (s *SctpTransport) Feed(data []byte) {
 func (s *SctpTransport) Send(data []byte, sid, ppid int) (int, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	rv := C.send_data(s.sctp, unsafe.Pointer(&data[0]), C.size_t(len(data)), C.uint16_t(sid), C.uint32_t(ppid))
+	rv := C.send_sctp(s.sctp, unsafe.Pointer(&data[0]), C.size_t(len(data)), C.uint16_t(sid), C.uint32_t(ppid))
 	if rv < 0 {
-		return 0, errors.New("failed to send data")
+		return 0, errors.New("fail to send SCTP data")
 	}
 	return int(rv), nil
 }
@@ -235,7 +237,7 @@ func (s *SctpTransport) Send(data []byte, sid, ppid int) (int, error) {
 func (s *SctpTransport) Connect(port int) error {
 	rv := C.connect_sctp(s.sctp, C.int(port))
 	if rv < 0 {
-		return errors.New("failed to connect SCTP transport")
+		return errors.New("fail to connect SCTP transport")
 	}
 	return nil
 }
@@ -243,7 +245,7 @@ func (s *SctpTransport) Connect(port int) error {
 func (s *SctpTransport) Accept() error {
 	rv := C.accept_sctp(s.sctp, C.int(s.Port))
 	if rv < 0 {
-		return errors.New("failed to accept SCTP transport")
+		return errors.New("fail to accept SCTP transport")
 	}
 	return nil
 }
