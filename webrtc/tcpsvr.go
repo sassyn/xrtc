@@ -19,7 +19,7 @@ const kTlsCrtFile string = "/tmp/etc/cert.pem"
 const kTlsKeyFile string = "/tmp/etc/cert.key"
 
 var kSslClientHello = []byte{
-	0x80, 0x46, // msg len,MSB is 1 ,indicates a 2 byte header
+	0x80, 0x46, // msg len,MSB is 1,indicates a 2 byte header
 	0x01,       // CLIENT_HELLO
 	0x03, 0x01, // SSL 3.1
 	0x00, 0x2d, // ciphersuite len
@@ -187,7 +187,7 @@ func (h *TcpHandler) Process() bool {
 		h.ServeTCP()
 	} else if bytes.Compare(prefix, kSslServerHello[0:prelen]) != 0 {
 		log.Println("[tcp] setup http/rawtcp handshake for", h.conn.RemoteAddr())
-		if checkHttpRequest(prefix) {
+		if IsHttpRequest(prefix) {
 			http.Serve(
 				NewHttpListener(h.conn),
 				NewHttpServeHandler(h.svr.config.Name, &h.svr.config.Http),
@@ -220,7 +220,7 @@ func (h *TcpHandler) Process() bool {
 		// now it is plain conn for tcp/http
 		log.Println("[tcp] setup tls (http/tcp) for", h.conn.RemoteAddr(), string(prefix))
 		h.conn = conn3
-		if checkHttpRequest(prefix) {
+		if IsHttpRequest(prefix) {
 			http.Serve(
 				NewHttpListener(h.conn),
 				NewHttpServeHandler(h.svr.config.Name, &h.svr.config.Http),
@@ -302,31 +302,39 @@ func (h *TcpHandler) writing() {
 	}
 }
 
-// check http command
-
-var kHttpMethodGET = []byte{0x47, 0x45, 0x54}
-var kHttpMethodPOST = []byte{0x50, 0x4F, 0x53}
+// Http method 3-bytes prefix
+//  OPTIONS/GET/HEAD/POST/PUT/DELETE/CONNECT/TRACE/PATCH.
 var kHttpMethodOPTIONS = []byte{0x4F, 0x50, 0x54}
+var kHttpMethodGET = []byte{0x47, 0x45, 0x54}
 var kHttpMethodHEAD = []byte{0x48, 0x45, 0x41}
+var kHttpMethodPOST = []byte{0x50, 0x4F, 0x53}
 var kHttpMethodPUT = []byte{0x50, 0x55, 0x54}
 var kHttpMethodDELETE = []byte{0x44, 0x45, 0x4C}
+var kHttpMethodCONNECT = []byte{0x43, 0x4F, 0x4E}
+var kHttpMethodTRACE = []byte{0x54, 0x52, 0x41}
+var kHttpMethodPATCH = []byte{0x50, 0x41, 0x54}
 
-func checkHttpRequest(data []byte) bool {
+// IsHttpRequest checks http request method (rfc7231/rfc5789).
+func IsHttpRequest(data []byte) bool {
 	if len(data) != 3 {
 		return false
 	}
-	if bytes.Compare(data, kHttpMethodGET) == 0 ||
-		bytes.Compare(data, kHttpMethodPOST) == 0 ||
+	if bytes.Compare(data, kHttpMethodOPTIONS) == 0 ||
+		bytes.Compare(data, kHttpMethodGET) == 0 ||
 		bytes.Compare(data, kHttpMethodHEAD) == 0 ||
+		bytes.Compare(data, kHttpMethodPOST) == 0 ||
 		bytes.Compare(data, kHttpMethodPUT) == 0 ||
 		bytes.Compare(data, kHttpMethodDELETE) == 0 ||
-		bytes.Compare(data, kHttpMethodOPTIONS) == 0 {
+		bytes.Compare(data, kHttpMethodCONNECT) == 0 ||
+		bytes.Compare(data, kHttpMethodTRACE) == 0 ||
+		bytes.Compare(data, kHttpMethodPATCH) == 0 {
 		return true
 	} else {
 		return false
 	}
 }
 
+// WriteIceTcpPacket write a packet with ice-tcp-format(head<2B>+data)
 func WriteIceTcpPacket(conn net.Conn, body []byte) (int, error) {
 	if len(body) > kMaxPacketSize {
 		return 0, errors.New("Too much data for ice-tcp")
@@ -337,6 +345,7 @@ func WriteIceTcpPacket(conn net.Conn, body []byte) (int, error) {
 	return conn.Write(buf.Bytes())
 }
 
+// ReadIceTcpPacket read a packet with ice-tcp-format(head<2B>+data)
 func ReadIceTcpPacket(conn net.Conn, body []byte) (int, error) {
 	if len(body) < kMaxPacketSize {
 		return 0, errors.New("No enough size in buf for ice-tcp")
