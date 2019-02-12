@@ -83,11 +83,11 @@ func (p *DcPeer) Run(sink DtlsConnSink) error {
 		var buf [1 << 16]byte
 		for {
 			data := <-recvChan
-			//log.Println("[nnet] DTLS data feed:", len(data))
+			//log.Println("[nnet] feed DTLS data:", len(data))
 			p.dtls.Feed(data)
 
 			if n, _ := p.dtls.Read(buf[:]); n > 0 {
-				//log.Println("[nnet] SCTP data feed:", n)
+				//log.Println("[nnet] feed SCTP data:", n)
 				p.sctp.Feed(buf[0:n])
 			}
 		}
@@ -102,7 +102,7 @@ func (p *DcPeer) Run(sink DtlsConnSink) error {
 			select {
 			case <-tick:
 				if n, _ := p.dtls.Spew(buf[:]); n > 0 {
-					log.Println("[nnet] reply DTLS data:", n)
+					log.Println("[nnet] reply DTLS(handshake) data:", n)
 					sink.SendData(buf[0:n])
 				}
 				continue
@@ -110,10 +110,9 @@ func (p *DcPeer) Run(sink DtlsConnSink) error {
 				close(exitTick)
 				// flush data
 				if n, _ := p.dtls.Spew(buf[:]); n > 0 {
-					log.Println("[nnet] flush DTLS data:", n)
+					log.Println("[nnet] flush DTLS(handshake) data:", n)
 					sink.SendData(buf[0:n])
 				}
-				break
 			}
 			break
 		}
@@ -131,11 +130,11 @@ func (p *DcPeer) Run(sink DtlsConnSink) error {
 		var buf [1 << 16]byte
 		for {
 			data := <-p.sctp.BufferChannel
-			log.Println("[nnet] read SCTP data:", len(data))
+			log.Println("[nnet] read DTLS-SCTP data:", len(data))
 			p.dtls.Write(data)
 
 			if n, _ := p.dtls.Spew(buf[:]); n > 0 {
-				log.Println("[nnet] reply DTLS data to SCTP:", n)
+				log.Println("[nnet] reply DTLS-SCTP data:", n)
 				sink.SendData(buf[0:n])
 			}
 		}
