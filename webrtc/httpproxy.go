@@ -424,9 +424,8 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 		var tag, routeUri string
 		var iceTcp, iceDirect bool
 
-		hostname := strings.Split(r.Host, ":")[0]
-
 		// check default host
+		hostname := strings.Split(r.Host, ":")[0]
 		if cfg.Servername != kDefaultServerName {
 			if cfg.Servername != hostname {
 				log.Warnln("[proxy] not matching servername:", cfg.Servername, r.Host)
@@ -435,7 +434,7 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 		}
 
 		// request scheme
-		sch := scheme(r)
+		proto := scheme(r)
 
 		// Check session and cache, route by session rid
 		rid, err := sessionRoute(w, r)
@@ -488,26 +487,32 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 			}
 
 			if route == nil {
+				// no route and return directly
 				return nil
 			}
 
+			// if not upstream, use upstream-id as service
+			// else choose a service from upstream by mode.
 			if route.UpStream == nil {
-				// use a seperate host not upstream
 				routeUri = route.UpStreamId
 			} else {
-				// choose a upstream random
-				switch {
-				case sch == "http" || sch == "https":
-					for _, v := range route.UpStream.HttpServers {
-						routeUri = v
-						break
-					}
-				case sch == "ws" || sch == "wss":
-					for _, v := range route.UpStream.WsServers {
-						routeUri = v
-						break
-					}
+				var servers []string
+				if proto == "http" || proto == "https" {
+					servers = route.UpStream.HttpServers
+				} else if proto == "ws" || proto == "wss" {
+					servers = route.UpStream.WsServers
+				} else {
+					return nil
 				}
+
+				idx := 0
+				if route.UpStream.Mode == "random" {
+					idx = util.RandomInt(len(servers))
+				} else { // round-robin
+					idx = (route.UpStream.index + 1) % len(servers)
+					route.UpStream.index++
+				}
+				routeUri = servers[idx]
 			}
 
 			if len(routeUri) < 4 {
@@ -521,26 +526,6 @@ func NewHttpServeHandler(name string, cfg *HttpParams) http.Handler {
 			if len(rid) > 0 {
 				// store route by rid
 				cfg.Cache.Set(rid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
-			}
-
-			// disable now
-			if tag == "janus0" {
-				paths := strings.Split(r.URL.Path, "/")
-				//log.Println("[proxy] split path=", len(paths), paths, r.URL)
-				if len(paths) >= 3 && paths[1] == "janus" {
-					jid := "jid_" + paths[2]
-					if item := cfg.Cache.Get(jid); item != nil {
-						if rt, ok := item.data.(*util.StringPair); ok {
-							tag = rt.First
-							routeUri = rt.Second
-							//log.Println("[proxy] get route by jid=", jid, routeUri)
-						}
-					} else {
-						// sotre route by jid
-						log.Println("[proxy] store route by jid=", jid, routeUri)
-						cfg.Cache.Set(jid, NewCacheItemEx(&util.StringPair{tag, routeUri}, 600*1000))
-					}
-				}
 			}
 		}
 

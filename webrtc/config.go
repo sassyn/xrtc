@@ -77,7 +77,12 @@ func (c *Config) Load(fname string) bool {
 				continue
 			}
 
-			ups := NewUPSConfig()
+			mode := "rr" // default round-robin
+			if rmode, err := yaml.ToScalar(service.Key("mode")); err == nil {
+				mode = rmode.String()
+			}
+
+			ups := NewUPSConfig(mode)
 			ups.Load(servers)
 			c.UpStreams[key] = ups
 			fmt.Println()
@@ -136,12 +141,14 @@ func (c *Config) Load(fname string) bool {
 
 // UPStream config
 type UPSConfig struct {
+	Mode        string
 	HttpServers []string
 	WsServers   []string
+	index       int
 }
 
-func NewUPSConfig() *UPSConfig {
-	return &UPSConfig{}
+func NewUPSConfig(mode string) *UPSConfig {
+	return &UPSConfig{Mode: mode}
 }
 
 func (u *UPSConfig) Load(node yaml.List) {

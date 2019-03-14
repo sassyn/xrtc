@@ -5,19 +5,9 @@
 - [x] Serve many WebRTC clients on one ICE port at the same time.
 - [x] Serve as a HTTP/WebSocket Reverse Proxy(`HTTP-RP`) .
 - [x] Serve HTTP/HTTPS/WS/WSS/ICE-TCP on one TCP port at the same time.
-- [x] Serve as a HTTP static server.
-- [x] Serve as an extendable node of WebRTC server.
-- [x] Support most features of [Janus WebRTC server](https://github.com/meetecho/janus-gateway).
-- [x] Support `upstream` config like nginx (partial).
+- [x] Serve as an extendable node of WebRTC server (e.g. [Janus](https://github.com/meetecho/janus-gateway)).
+- [x] Support `upstream` config like nginx (round-robin/random).
 - [x] Support `icedirect`(transparent) between WebRTC client and server.(partial)
-
-
-<br>
-
-# TODO
-
-- [ ] Support `upstream` mode="random/cycle/sticky"
-- [ ] Jitsi WebRTC server support
 
 
 <br>
@@ -25,7 +15,6 @@
 # ISSUES
 
 - [ ] For Janus the `icedirect` only supports tcp (set `icetcp: true`). 
-- [ ] The `upstream` only chooses the first server.
 
 
 <br>

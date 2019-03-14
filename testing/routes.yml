@@ -1,12 +1,14 @@
 services:
     upstream_janus1:
         proto: upstream
+        mode: rr
         servers:
             - http://janus_api:8088
             - ws://janus_api:8188
 
     upstream_ums1:
         proto: upstream
+        mode: random
         servers:
             - https://ums_api
             - wss://ums_api
